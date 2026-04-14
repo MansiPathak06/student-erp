@@ -45,13 +45,7 @@ const NAV_SECTIONS = [
       { icon: Bus,          label: "Transport", href: "/transport" },
     ],
   },
-  {
-    heading: "System",
-    items: [
-      { icon: Bell,     label: "Notifications", href: "/notifications" },
-      { icon: Settings, label: "Settings",      href: "/settings" },
-    ],
-  },
+  
 ];
 
 export default function Sidebar() {
