@@ -25,7 +25,7 @@ const NAV_SECTIONS = [
   {
     heading: "Academic",
     items: [
-      { icon: FileText,      label: "Exams",       href: "/exams" },
+      
       { icon: BarChart3,     label: "Results",     href: "/results" },
       { icon: ClipboardList, label: "Assignments", href: "/assignments" },
     ],
