@@ -21,15 +21,34 @@ import {
 import Sidebar from "@/components/Sidebar";
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────────────────────────────
 const getToken = () => {
   if (typeof window === "undefined") return null;
-  const match = document.cookie.match(/(^| )token=([^;]+)/);
-  return match ? match[2] : null;
+  
+  // First try localStorage (your current method)
+  let token = localStorage.getItem("token");
+  
+  // If not found, try cookies (like the Teachers page does)
+  if (!token) {
+    const match = document.cookie.match(/(^| )token=([^;]+)/);
+    token = match ? match[2] : null;
+  }
+  
+  // If still not found, try sessionStorage as fallback
+  if (!token) {
+    token = sessionStorage.getItem("token");
+  }
+  
+  return token;
 };
+
 const authHeaders = () => ({
   "Content-Type": "application/json",
   Authorization: `Bearer ${getToken()}`,
 });
+
+
+
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
 const PALETTE = [
