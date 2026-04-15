@@ -1,18 +1,26 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Users, UserCheck, UserMinus, BookOpen, ClipboardList,
-  Search, Download, Plus, X, Bell, ChevronDown,
+  Search, Download, Plus, X, Bell, ChevronDown, Loader2,
 } from "lucide-react";
 
 import Sidebar            from "@/components/Sidebar";
-import { TEACHERS }       from "./data";
 import TeacherSummaryCard from "@/components/TeacherSummaryCard";
 import TeacherFilterBar   from "@/components/TeacherFilterBar";
 import TeacherTable       from "@/components/TeacherTable";
 import TeacherCard        from "@/components/TeacherCard";
+import { STATUSES, EXPERIENCE_RANGES } from "./data";
 
+// ── Auth helper ───────────────────────────────────────────────────────────────
+const getToken = () => {
+  if (typeof window === "undefined") return null;
+  const match = document.cookie.match(/(^| )token=([^;]+)/);
+  return match ? match[2] : null;
+};
+
+// ── Experience filter ─────────────────────────────────────────────────────────
 function expMatch(exp, range) {
   if (range === "Any Experience") return true;
   if (range === "0–3 yrs")  return exp <= 3;
@@ -29,41 +37,78 @@ const INIT_FILTERS = {
   experience: "Any Experience",
 };
 
+// ── Page ──────────────────────────────────────────────────────────────────────
 export default function TeachersPage() {
-  const [search,   setSearch]   = useState("");
-  const [filters,  setFilters]  = useState(INIT_FILTERS);
-  const [selected, setSelected] = useState([]);
+  const [teachers,  setTeachers]  = useState([]);
+  const [meta,      setMeta]      = useState({ departments: [], subjects: [] });
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState(null);
+  const [search,    setSearch]    = useState("");
+  const [filters,   setFilters]   = useState(INIT_FILTERS);
+  const [selected,  setSelected]  = useState([]);
 
-  const total   = TEACHERS.length;
-  const active  = TEACHERS.filter((t) => t.status === "Active").length;
-  const onLeave = TEACHERS.filter((t) => t.status === "On Leave").length;
-  const avgCls  = Math.round(TEACHERS.reduce((s, t) => s + t.classes.length, 0) / total);
-  const pending = TEACHERS.reduce((s, t) => s + t.pendingTasks, 0);
+  // ── Fetch teachers + meta ─────────────────────────────────────────────────
+  useEffect(() => {
+    const token = getToken();
+    const headers = { Authorization: `Bearer ${token}` };
 
+    Promise.all([
+      fetch("/api/admin/teachers",      { headers }).then(r => r.json()),
+      fetch("/api/admin/teachers/meta", { headers }).then(r => r.json()),
+    ])
+      .then(([teacherData, metaData]) => {
+        if (Array.isArray(teacherData)) {
+          setTeachers(teacherData);
+        } else {
+          setError(teacherData.message || "Failed to load teachers");
+        }
+        if (metaData.departments) setMeta(metaData);
+      })
+      .catch(() => setError("Network error — could not reach server"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // ── Derived summary stats ─────────────────────────────────────────────────
+  const total   = teachers.length;
+  const active  = teachers.filter(t => t.status === "Active").length;
+  const onLeave = teachers.filter(t => t.status === "On Leave").length;
+  const avgCls  = total
+    ? Math.round(teachers.reduce((s, t) => s + (t.classes?.length ?? 0), 0) / total)
+    : 0;
+  const pending = teachers.reduce((s, t) => s + (t.pendingTasks ?? 0), 0);
+
+  // ── Filter logic ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return TEACHERS.filter((t) => {
-      const matchQ    = !q || t.name.toLowerCase().includes(q) || t.subject.toLowerCase().includes(q) || t.id.toLowerCase().includes(q);
+    return teachers.filter(t => {
+      const matchQ    = !q ||
+        t.name.toLowerCase().includes(q) ||
+        t.subject.toLowerCase().includes(q) ||
+        t.id.toLowerCase().includes(q);
       const matchDept = filters.department === "All Departments" || t.department === filters.department;
       const matchSubj = filters.subject    === "All Subjects"    || t.subject    === filters.subject;
       const matchStat = filters.status     === "All Status"      || t.status     === filters.status;
       const matchExp  = expMatch(t.experience, filters.experience);
       return matchQ && matchDept && matchSubj && matchStat && matchExp;
     });
-  }, [search, filters]);
+  }, [teachers, search, filters]);
 
-  const toggleSelect = (id) =>
-    setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  const toggleAll = (ids) =>
-    setSelected((prev) => (prev.length === ids.length ? [] : ids));
+  // ── Selection helpers ─────────────────────────────────────────────────────
+  const toggleSelect  = id  => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+  const toggleAll     = ids => setSelected(p => p.length === ids.length ? [] : ids);
 
+  // ── Build filter options from live meta ───────────────────────────────────
+  const departments = ["All Departments", ...meta.departments];
+  const subjects    = ["All Subjects",    ...meta.subjects];
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex min-h-screen bg-gray-50 font-sans">
       <Sidebar />
 
       <main className="flex-1 min-w-0 flex flex-col">
 
-        {/* Top bar — same as dashboard */}
+        {/* Top bar */}
         <header className="sticky top-0 z-30 bg-white/80 backdrop-blur border-b border-gray-100
                            flex items-center justify-between gap-4 px-6 py-3.5 shadow-sm">
           <div className="flex items-center gap-2 bg-gray-100 rounded-xl px-3 py-2 w-64 max-w-full ml-10 lg:ml-0">
@@ -81,9 +126,7 @@ export default function TeachersPage() {
             </button>
             <button className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl hover:bg-gray-100 transition-colors">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700
-                              flex items-center justify-center text-white text-xs font-bold">
-                AP
-              </div>
+                              flex items-center justify-center text-white text-xs font-bold">AP</div>
               <span className="hidden sm:block text-sm font-medium text-gray-700">Admin</span>
               <ChevronDown size={14} className="text-gray-400" />
             </button>
@@ -104,22 +147,25 @@ export default function TeachersPage() {
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 <input
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={e => setSearch(e.target.value)}
                   placeholder="Search name, subject, ID…"
                   className="h-10 w-full sm:w-56 pl-9 pr-8 rounded-xl border border-gray-200 bg-white
                              text-sm text-gray-700 placeholder:text-gray-400 shadow-sm
                              focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400 transition-all"
                 />
                 {search && (
-                  <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <button onClick={() => setSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                     <X size={13} />
                   </button>
                 )}
               </div>
-              <button className="h-10 px-4 flex items-center gap-2 rounded-xl border border-gray-200 bg-white text-gray-600 text-sm font-medium shadow-sm hover:bg-gray-50 hover:border-gray-300 transition-all">
+              <button className="h-10 px-4 flex items-center gap-2 rounded-xl border border-gray-200 bg-white
+                                 text-gray-600 text-sm font-medium shadow-sm hover:bg-gray-50 hover:border-gray-300 transition-all">
                 <Download size={14} /> Export
               </button>
-              <button className="h-10 px-4 flex items-center gap-2 rounded-xl bg-blue-600 text-white text-sm font-semibold shadow-sm shadow-blue-900/20 hover:bg-blue-700 active:scale-95 transition-all">
+              <button className="h-10 px-4 flex items-center gap-2 rounded-xl bg-blue-600 text-white
+                                 text-sm font-semibold shadow-sm shadow-blue-900/20 hover:bg-blue-700 active:scale-95 transition-all">
                 <Plus size={15} /> Add Teacher
               </button>
             </div>
@@ -127,17 +173,25 @@ export default function TeachersPage() {
 
           {/* Summary cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
-            <TeacherSummaryCard icon={Users}         value={total}              label="Total Teachers"  iconBg="bg-blue-50"    iconColor="text-blue-600"    trend={{ positive: true,  text: "vs last term" }} />
-            <TeacherSummaryCard icon={UserCheck}     value={active}             label="Active Teachers" iconBg="bg-emerald-50" iconColor="text-emerald-600" />
-            <TeacherSummaryCard icon={UserMinus}     value={onLeave}            label="On Leave"        iconBg="bg-amber-50"   iconColor="text-amber-600"   />
-            <TeacherSummaryCard icon={BookOpen}      value={`${avgCls} / tchr`} label="Avg Classes"     iconBg="bg-violet-50"  iconColor="text-violet-600"  />
-            <TeacherSummaryCard icon={ClipboardList} value={pending}            label="Pending Tasks"   iconBg="bg-rose-50"    iconColor="text-rose-600"    trend={{ positive: false, text: "Need attention" }} />
+            <TeacherSummaryCard icon={Users}         value={loading ? "—" : total}              label="Total Teachers"  iconBg="bg-blue-50"    iconColor="text-blue-600"    trend={{ positive: true,  text: "vs last term" }} />
+            <TeacherSummaryCard icon={UserCheck}     value={loading ? "—" : active}             label="Active Teachers" iconBg="bg-emerald-50" iconColor="text-emerald-600" />
+            <TeacherSummaryCard icon={UserMinus}     value={loading ? "—" : onLeave}            label="On Leave"        iconBg="bg-amber-50"   iconColor="text-amber-600"   />
+            <TeacherSummaryCard icon={BookOpen}      value={loading ? "—" : `${avgCls} / tchr`} label="Avg Classes"     iconBg="bg-violet-50"  iconColor="text-violet-600"  />
+            <TeacherSummaryCard icon={ClipboardList} value={loading ? "—" : pending}            label="Pending Tasks"   iconBg="bg-rose-50"    iconColor="text-rose-600"    trend={{ positive: false, text: "Need attention" }} />
           </div>
 
-          {/* Filters */}
-          <TeacherFilterBar filters={filters} onChange={setFilters} total={filtered.length} />
+          {/* Filters — pass live options */}
+          <TeacherFilterBar
+            filters={filters}
+            onChange={setFilters}
+            total={filtered.length}
+            departments={departments}
+            subjects={subjects}
+            statuses={STATUSES}
+            experienceRanges={EXPERIENCE_RANGES}
+          />
 
-          {/* Bulk bar */}
+          {/* Bulk action bar */}
           {selected.length > 0 && (
             <div className="flex items-center gap-3 px-4 py-2.5 bg-blue-600 rounded-xl text-white text-sm shadow-lg shadow-blue-900/20">
               <span className="font-semibold">{selected.length} selected</span>
@@ -150,37 +204,64 @@ export default function TeachersPage() {
             </div>
           )}
 
+          {/* Loading state */}
+          {loading && (
+            <div className="flex items-center justify-center py-20 text-gray-400">
+              <Loader2 size={24} className="animate-spin mr-2" />
+              <span className="text-sm">Loading teachers…</span>
+            </div>
+          )}
+
+          {/* Error state */}
+          {!loading && error && (
+            <div className="py-12 text-center text-red-500">
+              <p className="font-medium">{error}</p>
+              <p className="text-sm text-gray-400 mt-1">Check your network or login session</p>
+            </div>
+          )}
+
           {/* Desktop table */}
-          <div className="hidden md:block">
-            <TeacherTable teachers={filtered} selected={selected} onSelect={toggleSelect} onSelectAll={toggleAll} />
-          </div>
+          {!loading && !error && (
+            <div className="hidden md:block">
+              <TeacherTable
+                teachers={filtered}
+                selected={selected}
+                onSelect={toggleSelect}
+                onSelectAll={toggleAll}
+              />
+            </div>
+          )}
 
           {/* Mobile cards */}
-          <div className="md:hidden grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {filtered.length === 0 ? (
-              <div className="col-span-2 py-16 text-center text-gray-400">
-                <p className="text-base font-medium">No teachers found</p>
-                <p className="text-sm mt-1">Try adjusting your filters or search</p>
-              </div>
-            ) : (
-              filtered.map((t) => (
-                <TeacherCard key={t.id} teacher={t} selected={selected.includes(t.id)} onSelect={toggleSelect} />
-              ))
-            )}
-          </div>
+          {!loading && !error && (
+            <div className="md:hidden grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {filtered.length === 0 ? (
+                <div className="col-span-2 py-16 text-center text-gray-400">
+                  <p className="text-base font-medium">No teachers found</p>
+                  <p className="text-sm mt-1">Try adjusting your filters or search</p>
+                </div>
+              ) : (
+                filtered.map(t => (
+                  <TeacherCard key={t.id} teacher={t} selected={selected.includes(t.id)} onSelect={toggleSelect} />
+                ))
+              )}
+            </div>
+          )}
 
           {/* Pagination */}
-          <div className="flex items-center justify-between text-sm text-gray-400 pb-2">
-            <p>
-              Showing <span className="font-semibold text-gray-700">{filtered.length}</span> of{" "}
-              <span className="font-semibold text-gray-700">{total}</span> teachers
-            </p>
-            <div className="flex items-center gap-1">
-              <button className="w-8 h-8 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-xs text-gray-500 transition-colors">←</button>
-              <button className="w-8 h-8 rounded-lg bg-blue-600 text-white font-semibold text-xs">1</button>
-              <button className="w-8 h-8 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-xs text-gray-500 transition-colors">→</button>
+          {!loading && !error && (
+            <div className="flex items-center justify-between text-sm text-gray-400 pb-2">
+              <p>
+                Showing <span className="font-semibold text-gray-700">{filtered.length}</span> of{" "}
+                <span className="font-semibold text-gray-700">{total}</span> teachers
+              </p>
+              <div className="flex items-center gap-1">
+                <button className="w-8 h-8 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-xs text-gray-500 transition-colors">←</button>
+                <button className="w-8 h-8 rounded-lg bg-blue-600 text-white font-semibold text-xs">1</button>
+                <button className="w-8 h-8 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-xs text-gray-500 transition-colors">→</button>
+              </div>
             </div>
-          </div>
+          )}
 
         </div>
       </main>

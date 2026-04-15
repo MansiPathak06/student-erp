@@ -97,41 +97,6 @@ const deleteStudent = async (req, res) => {
   }
 };
 
-// GET /api/admin/teachers
-const getAllTeachers = async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT t.*, u.name, u.email, u.is_active
-      FROM teachers t
-      JOIN users u ON t.user_id = u.id
-      ORDER BY t.created_at DESC
-    `);
-    res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
-  }
-};
 
-// POST /api/admin/teachers
-const createTeacher = async (req, res) => {
-  const { name, email, password, employee_id, subject, phone, address, date_of_joining, gender, salary } = req.body;
-  try {
-    const hashed = await bcrypt.hash(password, 10);
-    const userRes = await pool.query(
-      "INSERT INTO users (name, email, password, role) VALUES ($1,$2,$3,'teacher') RETURNING id",
-      [name, email, hashed]
-    );
-    const userId = userRes.rows[0].id;
-    const teacherRes = await pool.query(
-      `INSERT INTO teachers (user_id, employee_id, subject, phone, address, date_of_joining, gender, salary)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [userId, employee_id, subject, phone, address, date_of_joining, gender, salary]
-    );
-    res.status(201).json({ message: "Teacher created", teacher: teacherRes.rows[0] });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-};
 
-module.exports = { getDashboard, getAllStudents, createStudent, updateStudent, deleteStudent, getAllTeachers, createTeacher };
+module.exports = { getDashboard, getAllStudents, createStudent, updateStudent, deleteStudent };
