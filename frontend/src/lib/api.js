@@ -1,4 +1,4 @@
-const BASE = "http://localhost:5000/api";
+const BASE = "/api";
 
 function getCookie(name) {
   if (typeof document === "undefined") return null;
@@ -10,6 +10,7 @@ export async function apiFetch(path, options = {}) {
   const token = getCookie("token");
   const res = await fetch(`${BASE}${path}`, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -18,7 +19,6 @@ export async function apiFetch(path, options = {}) {
   });
 
   if (res.status === 401) {
-    // Token expired — clear cookie and redirect
     document.cookie = "token=; Max-Age=0; path=/";
     document.cookie = "user=; Max-Age=0; path=/";
     window.location.href = "/login";
