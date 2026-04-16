@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { authHeaders } from "@/lib/auth";
 import {
   Search,
   Download,
