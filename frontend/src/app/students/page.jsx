@@ -16,8 +16,13 @@ const AVATAR_COLORS = [
 ];
 
 function getInitials(name = "") {
-  return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  if (!name) return "?";
+  const parts = name.split(" ").filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
+
 function avatarColor(name = "") {
   let h = 0;
   for (let c of name) h = (h * 31 + c.charCodeAt(0)) % AVATAR_COLORS.length;
@@ -37,90 +42,118 @@ function normalizeStudent(s) {
     section:        s.section       || "",
     classTeacher:   s.class_teacher || "",
     gender:         s.gender        || "",
-    dob:            s.date_of_birth ? s.date_of_birth.slice(0, 10) : "",
+    dob:            s.date_of_birth ? new Date(s.date_of_birth).toISOString().split('T')[0] : "",
     address:        s.address       || "",
     phone:          s.phone         || "",
     parentName:     s.guardian_name  || "",
     parentContact:  s.guardian_phone || "",
     fee:            s.fee_status    || "Pending",
-    attendance:     typeof s.attendance_pct !== "undefined"
-                      ? Number(s.attendance_pct)
-                      : 0,
+    attendance:     typeof s.attendance_pct !== "undefined" ? Number(s.attendance_pct) : 0,
     isActive:       s.is_active,
-    photoUrl: s.photo_url || null, 
+    photoUrl:       s.photo_url || null,
+    classId:        s.class_id ? String(s.class_id) : "",
   };
 }
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 const api = {
-  list:   ()       => apiFetch("/admin/students"),
-  meta:   ()       => apiFetch("/admin/students/meta"),        // classes + teachers
-  create: (body)   => apiFetch("/admin/students", { method: "POST",   body: JSON.stringify(body) }),
-  update: (id, b)  => apiFetch(`/admin/students/${id}`, { method: "PUT",    body: JSON.stringify(b) }),
-  remove: (id)     => apiFetch(`/admin/students/${id}`, { method: "DELETE" }),
+  list: async () => {
+    const response = await apiFetch("/admin/students");
+    return response || [];
+  },
+  
+  meta: async () => {
+    try {
+      const response = await apiFetch("/admin/students/meta");
+      return response || [];
+    } catch (err) {
+      console.error("Meta fetch error:", err);
+      return [];
+    }
+  },
+  
+  create: async (body) => {
+    const response = await apiFetch("/admin/students", { 
+      method: "POST",   
+      body: JSON.stringify(body) 
+    });
+    
+    if (!response || !response.id) {
+      throw new Error("Server did not return a valid student ID");
+    }
+    
+    return response;
+  },
+  
+  update: async (id, body) => {
+    const response = await apiFetch(`/admin/students/${id}`, { 
+      method: "PUT",    
+      body: JSON.stringify(body) 
+    });
+    return response;
+  },
+  
+  remove: async (id) => {
+    const response = await apiFetch(`/admin/students/${id}`, { 
+      method: "DELETE" 
+    });
+    return response;
+  },
 };
 
 // ─── CSV Export ───────────────────────────────────────────────────────────────
 function exportCSV(students) {
-  const headers = ["Student ID","Name","Roll","Class","Section","Class Teacher","Gender","Attendance","Fee","Email","Phone","Parent","Parent Contact"];
-  const rows    = students.map(s => [
-    s.studentId, s.name, s.roll, s.class, s.section, s.classTeacher, s.gender,
-    s.attendance + "%", s.fee, s.email, s.phone, s.parentName, s.parentContact,
+  const headers = ["Student ID","Name","Roll","Class","Section","Gender","DOB","Email","Phone","Parent Name","Parent Contact","Address"];
+  const rows = students.map(s => [
+    s.studentId, s.name, s.roll, s.class, s.section, s.gender,
+    s.dob, s.email, s.phone, s.parentName, s.parentContact, s.address,
   ]);
-  const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+  const csv = [headers, ...rows].map(r => r.map(v => `"${v || ''}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-  a.download = "students.csv";
+  a.href = url;
+  a.download = `students_${new Date().toISOString().split('T')[0]}.csv`;
   a.click();
+  URL.revokeObjectURL(url);
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Sub-components (Avatar, StudentAvatar, Toast, etc.) ──────────────────────
 function Avatar({ name, size = "md" }) {
   const sz = size === "lg" ? "w-16 h-16 text-xl" : size === "sm" ? "w-8 h-8 text-xs" : "w-10 h-10 text-sm";
+  const initials = getInitials(name);
+  const colorClass = avatarColor(name);
+  
   return (
-    <div className={`${sz} ${avatarColor(name)} rounded-full flex items-center justify-center text-white font-bold flex-shrink-0`}>
-      {getInitials(name)}
+    <div className={`${sz} ${colorClass} rounded-full flex items-center justify-center text-white font-bold flex-shrink-0`}>
+      {initials}
     </div>
   );
 }
 
-function FeeBadge({ status }) {
-  return status === "Paid" ? (
-    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
-      <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" /> Paid
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-600">
-      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-      </svg>
-      Pending
-    </span>
-  );
+function StudentAvatar({ name, photoUrl, size = "md" }) {
+  const sz = size === "lg" ? "w-16 h-16 text-xl" : size === "sm" ? "w-8 h-8 text-xs" : "w-10 h-10 text-sm";
+  const [imgError, setImgError] = useState(false);
+  
+  if (photoUrl && !imgError) {
+    return (
+      <img
+        src={photoUrl}
+        alt={name}
+        className={`${sz} rounded-full object-cover flex-shrink-0 border border-gray-200`}
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+  return <Avatar name={name} size={size} />;
 }
 
-function AttendanceBar({ pct }) {
-  const color = pct >= 85 ? "bg-green-500" : pct >= 75 ? "bg-blue-500" : "bg-amber-400";
-  return (
-    <div className="flex items-center gap-2 min-w-[80px]">
-      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-        <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className={`text-xs font-semibold tabular-nums ${pct < 75 ? "text-amber-600" : "text-gray-700"}`}>
-        {pct}%
-      </span>
-    </div>
-  );
-}
-
-// ─── Toast ────────────────────────────────────────────────────────────────────
 function Toast({ msg, type, onDismiss }) {
   useEffect(() => {
     if (!msg) return;
     const t = setTimeout(onDismiss, 3500);
     return () => clearTimeout(t);
-  }, [msg]);
+  }, [msg, onDismiss]);
   if (!msg) return null;
   const color = type === "error"
     ? "bg-red-50 border-red-200 text-red-700"
@@ -133,17 +166,17 @@ function Toast({ msg, type, onDismiss }) {
   );
 }
 
-// ─── Student Row ──────────────────────────────────────────────────────────────
+// ─── Student Row Component ────────────────────────────────────────────────────
 function StudentRow({ student, selected, onSelect, onView, onEdit, onDelete }) {
   return (
-    <tr className={`border-b border-gray-50 hover:bg-blue-50/40 transition-colors group ${student.attendance < 75 ? "bg-amber-50/30" : ""}`}>
+    <tr className="border-b border-gray-50 hover:bg-blue-50/40 transition-colors group">
       <td className="px-4 py-3">
         <input type="checkbox" checked={selected} onChange={() => onSelect(student.id)}
           className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer" />
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-3">
-          <Avatar name={student.name} />
+          <StudentAvatar name={student.name} photoUrl={student.photoUrl} />
           <div>
             <p className="font-semibold text-gray-900 text-sm leading-tight">{student.name}</p>
             <p className="text-xs text-gray-400">{student.email}</p>
@@ -156,15 +189,13 @@ function StudentRow({ student, selected, onSelect, onView, onEdit, onDelete }) {
         <span className="font-medium">Class {student.class}</span>
         <span className="text-gray-400"> – {student.section}</span>
       </td>
-      <td className="px-4 py-3 text-xs text-gray-500 max-w-[120px] truncate">{student.classTeacher || "—"}</td>
-      <td className="px-4 py-3 text-sm text-gray-600">{student.gender}</td>
+      <td className="px-4 py-3 text-sm text-gray-600">{student.gender || "—"}</td>
+      <td className="px-4 py-3 text-sm text-gray-600">{student.dob || "—"}</td>
+      <td className="px-4 py-3 text-sm text-gray-600">{student.phone || "—"}</td>
       <td className="px-4 py-3">
-        <AttendanceBar pct={student.attendance} />
-        {student.attendance < 75 && (
-          <p className="text-[10px] text-amber-600 font-semibold mt-0.5">Below threshold</p>
-        )}
+        <p className="text-sm text-gray-700">{student.parentName || "—"}</p>
+        {student.parentContact && <p className="text-xs text-gray-400">{student.parentContact}</p>}
       </td>
-      <td className="px-4 py-3"><FeeBadge status={student.fee} /></td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <button onClick={() => onView(student)} className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-100" title="View">
@@ -182,28 +213,26 @@ function StudentRow({ student, selected, onSelect, onView, onEdit, onDelete }) {
   );
 }
 
-// ─── Student Card (mobile) ────────────────────────────────────────────────────
 function StudentCard({ student, onView, onEdit, onDelete }) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all">
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3">
-          <Avatar name={student.name} />
-          <div>
-            <p className="font-semibold text-gray-900">{student.name}</p>
-            <p className="text-xs text-gray-400">Roll #{student.roll}</p>
-            {student.studentId && <p className="text-xs text-gray-400 font-mono">{student.studentId}</p>}
-          </div>
+      <div className="flex items-start gap-3 mb-3">
+        <StudentAvatar name={student.name} photoUrl={student.photoUrl} />
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-gray-900 truncate">{student.name}</p>
+          <p className="text-xs text-gray-400">{student.email}</p>
+          {student.studentId && <p className="text-xs text-gray-400 font-mono">{student.studentId}</p>}
+          <p className="text-xs text-gray-400">Roll #{student.roll}</p>
         </div>
-        <FeeBadge status={student.fee} />
       </div>
-      <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 mb-3">
+      <div className="grid grid-cols-2 gap-1 text-xs text-gray-500 mb-3">
         <span>Class {student.class} – {student.section}</span>
-        <span>{student.gender}</span>
-        {student.classTeacher && <span className="col-span-2 text-gray-400">Teacher: {student.classTeacher}</span>}
+        <span>{student.gender || "—"}</span>
+        {student.dob && <span>DOB: {student.dob}</span>}
+        {student.phone && <span>{student.phone}</span>}
+        {student.parentName && <span className="col-span-2 text-gray-400">Parent: {student.parentName} {student.parentContact && `· ${student.parentContact}`}</span>}
       </div>
-      <AttendanceBar pct={student.attendance} />
-      <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
+      <div className="flex gap-2 pt-3 border-t border-gray-50">
         <button onClick={() => onView(student)} className="flex-1 text-xs py-1.5 rounded-lg bg-blue-50 text-blue-600 font-medium hover:bg-blue-100">View</button>
         <button onClick={() => onEdit(student)} className="flex-1 text-xs py-1.5 rounded-lg bg-gray-50 text-gray-600 font-medium hover:bg-gray-100">Edit</button>
         <button onClick={() => onDelete(student.id)} className="flex-1 text-xs py-1.5 rounded-lg bg-red-50 text-red-500 font-medium hover:bg-red-100">Delete</button>
@@ -222,7 +251,7 @@ function ViewModal({ student, onClose }) {
         <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"><CloseIcon /></button>
       </div>
       <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-blue-500 to-blue-700 rounded-xl mb-5">
-        <Avatar name={student.name} size="lg" />
+        <StudentAvatar name={student.name} photoUrl={student.photoUrl} size="lg" />
         <div className="text-white">
           <p className="text-xl font-bold">{student.name}</p>
           <p className="text-blue-100 text-sm">Class {student.class} – Section {student.section}</p>
@@ -232,43 +261,20 @@ function ViewModal({ student, onClose }) {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <InfoBlock title="Personal Details">
-          <InfoRow label="Date of Birth"  value={student.dob}     />
-          <InfoRow label="Gender"         value={student.gender}  />
-          <InfoRow label="Email"          value={student.email}   />
-          <InfoRow label="Phone"          value={student.phone}   />
-          <InfoRow label="Address"        value={student.address} />
+          <InfoRow label="Date of Birth" value={student.dob} />
+          <InfoRow label="Gender" value={student.gender} />
+          <InfoRow label="Email" value={student.email} />
+          <InfoRow label="Phone" value={student.phone} />
+          <InfoRow label="Address" value={student.address} />
         </InfoBlock>
         <InfoBlock title="Class Info">
-          <InfoRow label="Class"         value={student.class}       />
-          <InfoRow label="Section"       value={student.section}     />
-          <InfoRow label="Class Teacher" value={student.classTeacher}/>
+          <InfoRow label="Class" value={student.class} />
+          <InfoRow label="Section" value={student.section} />
+          <InfoRow label="Class Teacher" value={student.classTeacher} />
         </InfoBlock>
         <InfoBlock title="Parent / Guardian">
-          <InfoRow label="Name"    value={student.parentName}    />
+          <InfoRow label="Name" value={student.parentName} />
           <InfoRow label="Contact" value={student.parentContact} />
-        </InfoBlock>
-        <InfoBlock title="Attendance">
-          <div className="mt-1">
-            <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>Attendance Rate</span>
-              <span className={student.attendance < 75 ? "text-amber-600 font-semibold" : "text-gray-700"}>
-                {student.attendance}%
-              </span>
-            </div>
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full ${student.attendance >= 85 ? "bg-green-500" : student.attendance >= 75 ? "bg-blue-500" : "bg-amber-400"}`}
-                style={{ width: `${student.attendance}%` }}
-              />
-            </div>
-            {student.attendance < 75 && <p className="text-xs text-amber-600 mt-1 font-medium">⚠ Below 75% threshold</p>}
-          </div>
-        </InfoBlock>
-        <InfoBlock title="Fee Status">
-          <div className="flex items-center gap-2 mt-1">
-            <FeeBadge status={student.fee} />
-            {student.fee !== "Paid" && <span className="text-xs text-red-500">Action required</span>}
-          </div>
         </InfoBlock>
       </div>
     </ModalWrapper>
@@ -283,6 +289,7 @@ function InfoBlock({ title, children }) {
     </div>
   );
 }
+
 function InfoRow({ label, value }) {
   return (
     <div className="flex justify-between text-sm py-0.5">
@@ -297,29 +304,28 @@ const EMPTY_FORM = {
   name: "", email: "", password: "", roll: "", studentId: "",
   classId: "", class: "", section: "", classTeacher: "",
   dob: "", gender: "", address: "", phone: "", parentName: "", parentContact: "",
-  fee: "Pending",
 };
 
 function AddEditModal({ student, classMeta, onClose, onSave, saving }) {
   const isEdit = !!student;
 
   const [form, setForm] = useState(() =>
-    isEdit ? { ...student, password: "", classId: student.classId || "" }
-           : { ...EMPTY_FORM }
+    isEdit ? { ...student, password: "" } : { ...EMPTY_FORM }
   );
 
-  // ── Photo state (lives here, not in page) ──────────────────────────────
-  const [photoFile,    setPhotoFile]    = useState(null);
-  const [photoPreview, setPhotoPreview] = useState(student?.photo_url || null);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(student?.photoUrl || null);
 
   const handlePhotoChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { alert("Photo must be under 2MB."); return; }
+    if (file.size > 2 * 1024 * 1024) { 
+      alert("Photo must be under 2MB."); 
+      return; 
+    }
     setPhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
   };
-  // ───────────────────────────────────────────────────────────────────────
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -328,10 +334,10 @@ function AddEditModal({ student, classMeta, onClose, onSave, saving }) {
     if (found) {
       setForm(f => ({
         ...f,
-        classId:      String(found.id),
-        class:        found.class_name   || found.name || "",
-        section:      found.section      || "",
-        classTeacher: found.teacher_name || found.class_teacher || "",
+        classId: String(found.id),
+        class: found.class_name || "",
+        section: found.section || "",
+        classTeacher: found.teacher_name || "",
       }));
     } else {
       setForm(f => ({ ...f, classId: "", class: "", section: "", classTeacher: "" }));
@@ -339,12 +345,11 @@ function AddEditModal({ student, classMeta, onClose, onSave, saving }) {
   };
 
   const handleSave = () => {
-    if (!form.name.trim())                return alert("Student name is required.");
-    if (!form.roll.trim())                return alert("Roll number is required.");
-    if (!form.classId)                    return alert("Please select a class.");
-    if (!isEdit && !form.email.trim())    return alert("Email is required.");
+    if (!form.name.trim()) return alert("Student name is required.");
+    if (!form.roll.trim()) return alert("Roll number is required.");
+    if (!form.classId) return alert("Please select a class.");
+    if (!isEdit && !form.email.trim()) return alert("Email is required.");
     if (!isEdit && !form.password.trim()) return alert("Password is required.");
-    // Pass photoFile up so the parent can upload it after save
     onSave(form, photoFile);
   };
 
@@ -360,8 +365,7 @@ function AddEditModal({ student, classMeta, onClose, onSave, saving }) {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-        {/* ── Photo upload — TOP of form ─────────────────────────────── */}
+        {/* Photo upload */}
         <div className="sm:col-span-2 flex items-center gap-4">
           <div className="relative w-20 h-20 rounded-full overflow-hidden bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center flex-shrink-0">
             {photoPreview
@@ -381,12 +385,9 @@ function AddEditModal({ student, classMeta, onClose, onSave, saving }) {
                 onChange={handlePhotoChange} className="hidden" />
             </label>
             <p className="text-xs text-gray-400 mt-1">JPG, PNG or WebP · Max 2MB</p>
-            {photoFile && (
-              <p className="text-xs text-green-600 mt-1">✓ {photoFile.name}</p>
-            )}
+            {photoFile && <p className="text-xs text-green-600 mt-1">✓ {photoFile.name}</p>}
           </div>
         </div>
-        {/* ─────────────────────────────────────────────────────────── */}
 
         <Field label={isEdit ? "Student ID" : "Student ID (leave blank to auto-generate)"}
           value={form.studentId} onChange={v => set("studentId", v)}
@@ -414,7 +415,7 @@ function AddEditModal({ student, classMeta, onClose, onSave, saving }) {
               <option value="">— Select a class —</option>
               {classMeta.map(c => (
                 <option key={c.id} value={c.id}>
-                  Class {c.class_name || c.name} – Section {c.section}
+                  Class {c.class_name} – Section {c.section}
                   {c.teacher_name ? ` (Teacher: ${c.teacher_name})` : ""}
                 </option>
               ))}
@@ -449,7 +450,6 @@ function AddEditModal({ student, classMeta, onClose, onSave, saving }) {
         <Field label="Phone" value={form.phone} onChange={v => set("phone", v)} placeholder="10-digit number" />
         <Field label="Parent Name" value={form.parentName} onChange={v => set("parentName", v)} placeholder="Guardian's full name" />
         <Field label="Parent Contact" value={form.parentContact} onChange={v => set("parentContact", v)} placeholder="10-digit number" />
-       
         <div className="sm:col-span-2">
           <Field label="Address" value={form.address} onChange={v => set("address", v)} placeholder="Full address" />
         </div>
@@ -486,7 +486,6 @@ function Field({ label, value, onChange, placeholder, type = "text", disabled = 
   );
 }
 
-// ─── Modal Wrapper ────────────────────────────────────────────────────────────
 function ModalWrapper({ children, onClose, wide }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
@@ -498,7 +497,6 @@ function ModalWrapper({ children, onClose, wide }) {
   );
 }
 
-// ─── Delete Confirm ───────────────────────────────────────────────────────────
 function DeleteModal({ count = 1, onClose, onConfirm, saving }) {
   return (
     <ModalWrapper onClose={onClose}>
@@ -528,7 +526,6 @@ function DeleteModal({ count = 1, onClose, onConfirm, saving }) {
   );
 }
 
-// ─── Small utilities ──────────────────────────────────────────────────────────
 function Spinner() {
   return (
     <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
@@ -560,62 +557,52 @@ function PaginationBtn({ children, onClick, disabled }) {
   );
 }
 
-// ─── Icons ────────────────────────────────────────────────────────────────────
-const EyeIcon   = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
-const EditIcon  = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
+// Icons
+const EyeIcon = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
+const EditIcon = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
 const TrashIcon = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>;
 const CloseIcon = () => <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function StudentsPage() {
-  const [students,       setStudents]       = useState([]);
-  const [classMeta,      setClassMeta]      = useState([]);   // [{id, class_name, section, teacher_name}]
-  const [loading,        setLoading]        = useState(true);
-  const [fetchError,     setFetchError]     = useState("");
-  const [saving,         setSaving]         = useState(false);
+  const [students, setStudents] = useState([]);
+  const [classMeta, setClassMeta] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  // Filters & pagination
-  const [search,         setSearch]         = useState("");
-  const [filterClass,    setFilterClass]    = useState("All");
-  const [filterSection,  setFilterSection]  = useState("All");
-  const [filterGender,   setFilterGender]   = useState("All");
-  const [page,           setPage]           = useState(1);
+  const [search, setSearch] = useState("");
+  const [filterClass, setFilterClass] = useState("All");
+  const [filterSection, setFilterSection] = useState("All");
+  const [filterGender, setFilterGender] = useState("All");
+  const [page, setPage] = useState(1);
 
-  // Selection
-  const [selected,       setSelected]       = useState([]);
-
-  // Modals
-  const [viewStudent,    setViewStudent]    = useState(null);
-  const [editStudent,    setEditStudent]    = useState(null);
-  const [showAddEdit,    setShowAddEdit]    = useState(false);
-  const [deleteTarget,   setDeleteTarget]   = useState(null);
-
- 
-
-  // Toast
+  const [selected, setSelected] = useState([]);
+  const [viewStudent, setViewStudent] = useState(null);
+  const [editStudent, setEditStudent] = useState(null);
+  const [showAddEdit, setShowAddEdit] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [toast, setToast] = useState({ msg: "", type: "success" });
-  const showToast = (msg, type = "success") => setToast({ msg, type });
 
-  // ── Derive unique class list for filter dropdown ──
+  const showToast = useCallback((msg, type = "success") => setToast({ msg, type }), []);
+
   const classOptions = useMemo(() => {
     const unique = [...new Set(students.map(s => s.class))].filter(Boolean).sort();
     return ["All", ...unique];
   }, [students]);
 
-
-
-  // ── Fetch students + class meta together ──
   const fetchAll = useCallback(async () => {
     setLoading(true);
     setFetchError("");
     try {
       const [studentsData, metaData] = await Promise.all([
         api.list(),
-        api.meta().catch(() => []),   // graceful fallback if endpoint missing
+        api.meta().catch(() => []),
       ]);
       setStudents((studentsData || []).map(normalizeStudent));
       setClassMeta(metaData || []);
     } catch (err) {
+      console.error("Fetch error:", err);
       setFetchError("Failed to load students. Please refresh.");
     } finally {
       setLoading(false);
@@ -624,104 +611,124 @@ export default function StudentsPage() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // ── Filter & paginate ──
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return students.filter(s => {
-      const matchSearch  = !q
+      const matchSearch = !q
         || s.name.toLowerCase().includes(q)
         || s.roll.includes(q)
         || s.studentId.toLowerCase().includes(q)
         || `class ${s.class}`.includes(q)
         || s.email.toLowerCase().includes(q);
-      const matchClass   = filterClass   === "All" || s.class   === filterClass;
+      const matchClass = filterClass === "All" || s.class === filterClass;
       const matchSection = filterSection === "All" || s.section === filterSection;
-      const matchGender  = filterGender  === "All" || s.gender  === filterGender;
+      const matchGender = filterGender === "All" || s.gender === filterGender;
       return matchSearch && matchClass && matchSection && matchGender;
     });
   }, [students, search, filterClass, filterSection, filterGender]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
-  const paginated  = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
-  // ── Selection ──
-  const toggleSelect = id => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
-  const toggleAll    = ()  => setSelected(s => s.length === paginated.length ? [] : paginated.map(s => s.id));
+  const toggleSelect = useCallback((id) => {
+    setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  }, []);
+  
+  const toggleAll = useCallback(() => {
+    setSelected(s => s.length === paginated.length ? [] : paginated.map(s => s.id));
+  }, [paginated]);
 
-  // ── Save (create / update) ──
-const handleSave = async (form, photoFile) => {   // ← accept photoFile
-  setSaving(true);
-  try {
-    let savedId = form.id;   // for edit; for create we get it from response
-
-    if (form.id) {
-      const body = {
-        class_id:       form.classId,
-        class:          form.class,
-        section:        form.section,
-        class_teacher:  form.classTeacher,
-        phone:          form.phone,
-        address:        form.address,
-        fee_status:     form.fee,
-        guardian_name:  form.parentName,
-        guardian_phone: form.parentContact,
+  const handleSave = useCallback(async (form, photoFile) => {
+    setSaving(true);
+    let savedId = null;
+    
+    try {
+      // Prepare the data exactly as backend expects
+      const studentData = {
+        name: form.name,
+        email: form.email,
+        password: form.password,
+        roll_number: form.roll,
+        class_id: parseInt(form.classId), // Ensure it's a number
+        class: form.class,
+        section: form.section,
+        class_teacher: form.classTeacher,
+        date_of_birth: form.dob || null,
+        gender: form.gender || null,
+        address: form.address || null,
+        phone: form.phone || null,
+        guardian_name: form.parentName || null,
+        guardian_phone: form.parentContact || null,
       };
-      await api.update(form.id, body);
-      showToast("Student updated successfully.");
-    } else {
-      const body = {
-        student_id:     form.studentId || undefined,
-        name:           form.name,
-        email:          form.email,
-        password:       form.password,
-        roll_number:    form.roll,
-        class_id:       form.classId,
-        class:          form.class,
-        section:        form.section,
-        class_teacher:  form.classTeacher,
-        date_of_birth:  form.dob,
-        gender:         form.gender,
-        address:        form.address,
-        phone:          form.phone,
-        guardian_name:  form.parentName,
-        guardian_phone: form.parentContact,
-      };
-      const created = await api.create(body);
-      savedId = created.id;   // grab new student's id
-      showToast("Student added successfully.");
-    }
 
-    // ── Upload photo if one was selected ───────────────────────────────
-    if (photoFile && savedId) {
-      try {
-        const formData = new FormData();
-        formData.append("photo", photoFile);
-        await apiFetch(`/admin/students/${savedId}/photo`, {
-          method: "POST",
-          body: formData,
-          // Don't set Content-Type — browser sets it with boundary automatically
-        });
-      } catch {
-        showToast("Student saved but photo upload failed.", "error");
+      // Add student_id only if provided (for edit or manual entry)
+      if (form.studentId) {
+        studentData.student_id = form.studentId;
       }
+
+      console.log("Saving student with data:", studentData);
+
+      let result;
+      if (form.id) {
+        // Update existing student
+        const updateData = {
+          class_id: parseInt(form.classId),
+          class: form.class,
+          section: form.section,
+          class_teacher: form.classTeacher,
+          phone: form.phone,
+          address: form.address,
+          guardian_name: form.parentName,
+          guardian_phone: form.parentContact,
+        };
+        result = await api.update(form.id, updateData);
+        savedId = form.id;
+        showToast("Student updated successfully.");
+      } else {
+        // Create new student
+        result = await api.create(studentData);
+        savedId = result.id;
+        showToast("Student added successfully.");
+      }
+
+      // Handle photo upload if exists
+      if (photoFile && savedId) {
+        try {
+          const formData = new FormData();
+          formData.append("photo", photoFile);
+          
+          await apiFetch(`/admin/students/${savedId}/photo`, {
+            method: "POST",
+            body: formData,
+          });
+          showToast( form.id ? "Photo updated successfully." : "Student added with photo.");
+        } catch (photoErr) {
+          console.error("Photo upload failed:", photoErr);
+          showToast("Student saved but photo upload failed.", "error");
+        }
+      }
+
+      setShowAddEdit(false);
+      setEditStudent(null);
+      await fetchAll();
+      
+    } catch (err) {
+      console.error("Save error:", err);
+      showToast(err?.message || "Failed to save student.", "error");
+    } finally {
+      setSaving(false);
     }
-    // ──────────────────────────────────────────────────────────────────
+  }, [fetchAll, showToast]);
 
-    setShowAddEdit(false);
-    setEditStudent(null);
-    await fetchAll();
-  } catch (err) {
-    showToast(err?.message || "Failed to save student.", "error");
-  } finally {
-    setSaving(false);
-  }
-};
+  const handleDeleteRequest = useCallback((id) => {
+    setDeleteTarget({ ids: [id], bulk: false });
+  }, []);
+  
+  const handleBulkDeleteRequest = useCallback(() => {
+    if (selected.length) setDeleteTarget({ ids: [...selected], bulk: true });
+  }, [selected]);
 
-  // ── Delete ──
-  const handleDeleteRequest      = (id)  => setDeleteTarget({ ids: [id], bulk: false });
-  const handleBulkDeleteRequest  = ()    => { if (selected.length) setDeleteTarget({ ids: [...selected], bulk: true }); };
-
-  const confirmDelete = async () => {
+  const confirmDelete = useCallback(async () => {
     setSaving(true);
     try {
       await Promise.all(deleteTarget.ids.map(id => api.remove(id)));
@@ -729,41 +736,38 @@ const handleSave = async (form, photoFile) => {   // ← accept photoFile
       setSelected(s => s.filter(x => !deleteTarget.ids.includes(x)));
       setDeleteTarget(null);
       await fetchAll();
-    } catch {
+    } catch (err) {
+      console.error("Delete error:", err);
       showToast("Failed to delete. Please try again.", "error");
     } finally {
       setSaving(false);
     }
-  };
+  }, [deleteTarget, fetchAll, showToast]);
 
-  const resetFilters = () => {
-    setFilterClass("All"); setFilterSection("All");
-    setFilterGender("All"); setSearch(""); setPage(1);
-  };
+  const resetFilters = useCallback(() => {
+    setFilterClass("All");
+    setFilterSection("All");
+    setFilterGender("All");
+    setSearch("");
+    setPage(1);
+  }, []);
 
-  // ── Stats ──
   const totalStudents = students.length;
-  const lowAttendance = students.filter(s => s.attendance > 0 && s.attendance < 75).length;
-  const feePending    = students.filter(s => s.fee !== "Paid").length;
-  const avgAttendance = totalStudents
-    ? Math.round(students.reduce((a, s) => a + s.attendance, 0) / totalStudents)
-    : 0;
+  const totalMale = students.filter(s => s.gender === "Male").length;
+  const totalFemale = students.filter(s => s.gender === "Female").length;
+  const withParent = students.filter(s => s.parentName).length;
 
-  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
 
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
-
-        {/* ── Top bar ── */}
         <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
           <div className="pl-10 lg:pl-0">
             <h1 className="text-xl font-bold text-gray-900 leading-tight">Students</h1>
             <p className="text-sm text-gray-400">Manage all student records</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Search */}
             <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 w-full sm:w-64">
               <svg className="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -773,7 +777,6 @@ const handleSave = async (form, photoFile) => {   // ← accept photoFile
                 className="bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none w-full" />
             </div>
 
-            {/* Refresh */}
             <button onClick={fetchAll} title="Refresh"
               className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -782,7 +785,6 @@ const handleSave = async (form, photoFile) => {   // ← accept photoFile
               </svg>
             </button>
 
-            {/* Export CSV */}
             <button onClick={() => exportCSV(filtered)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -792,7 +794,6 @@ const handleSave = async (form, photoFile) => {   // ← accept photoFile
               Export
             </button>
 
-            {/* Add Student */}
             <button onClick={() => { setEditStudent(null); setShowAddEdit(true); }}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-blue-700 transition-all shadow-md shadow-blue-200">
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -804,8 +805,6 @@ const handleSave = async (form, photoFile) => {   // ← accept photoFile
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
-
-          {/* ── Fetch error ── */}
           {fetchError && (
             <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl flex items-center justify-between">
               {fetchError}
@@ -813,13 +812,12 @@ const handleSave = async (form, photoFile) => {   // ← accept photoFile
             </div>
           )}
 
-          {/* ── Stats ── */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[
-              { label: "Total Students", value: loading ? "…" : totalStudents, color: "text-blue-600",  bg: "bg-blue-50",  icon: "👥" },
-              { label: "Avg Attendance", value: loading ? "…" : avgAttendance + "%", color: "text-green-600", bg: "bg-green-50", icon: "📊" },
-              { label: "Low Attendance", value: loading ? "…" : lowAttendance, color: "text-amber-600", bg: "bg-amber-50", icon: "⚠️" },
-              { label: "Fee Pending",    value: loading ? "…" : feePending,    color: "text-red-600",   bg: "bg-red-50",   icon: "💳" },
+              { label: "Total Students", value: loading ? "…" : totalStudents, color: "text-blue-600", bg: "bg-blue-50", icon: "👥" },
+              { label: "Male", value: loading ? "…" : totalMale, color: "text-indigo-600", bg: "bg-indigo-50", icon: "👦" },
+              { label: "Female", value: loading ? "…" : totalFemale, color: "text-pink-600", bg: "bg-pink-50", icon: "👧" },
+              { label: "With Guardian", value: loading ? "…" : withParent, color: "text-green-600", bg: "bg-green-50", icon: "👪" },
             ].map((s, i) => (
               <div key={i} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex items-center gap-3">
                 <div className={`w-10 h-10 ${s.bg} rounded-xl flex items-center justify-center text-lg`}>{s.icon}</div>
@@ -831,11 +829,9 @@ const handleSave = async (form, photoFile) => {   // ← accept photoFile
             ))}
           </div>
 
-          {/* ── Filters ── */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3 flex flex-wrap items-center gap-3">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Filters</span>
 
-            {/* Dynamic class filter from actual student data */}
             <select
               value={filterClass}
               onChange={e => { setFilterClass(e.target.value); setPage(1); }}
@@ -847,7 +843,7 @@ const handleSave = async (form, photoFile) => {   // ← accept photoFile
             </select>
 
             <Select value={filterSection} onChange={v => { setFilterSection(v); setPage(1); }} options={SECTIONS} label="Section" />
-            <Select value={filterGender}  onChange={v => { setFilterGender(v);  setPage(1); }} options={GENDERS}  label="Gender"  />
+            <Select value={filterGender} onChange={v => { setFilterGender(v); setPage(1); }} options={GENDERS} label="Gender" />
 
             {(filterClass !== "All" || filterSection !== "All" || filterGender !== "All" || search) && (
               <button onClick={resetFilters} className="text-xs text-red-500 font-semibold hover:text-red-600 underline underline-offset-2">
@@ -866,7 +862,6 @@ const handleSave = async (form, photoFile) => {   // ← accept photoFile
             </div>
           </div>
 
-          {/* ── Loading skeleton ── */}
           {loading ? (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="p-6 space-y-3">
@@ -877,7 +872,6 @@ const handleSave = async (form, photoFile) => {   // ← accept photoFile
             </div>
           ) : (
             <>
-              {/* ── Table (desktop) ── */}
               <div className="hidden sm:block bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden overflow-x-auto">
                 <table className="w-full text-sm min-w-[900px]">
                   <thead className="bg-gray-50 border-b border-gray-100">
@@ -888,7 +882,7 @@ const handleSave = async (form, photoFile) => {   // ← accept photoFile
                           onChange={toggleAll}
                           className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer" />
                       </th>
-                      {["Profile","Student ID","Roll No.","Class","Class Teacher","Gender","Attendance","Fee Status","Actions"].map(h => (
+                      {["Photo & Name", "Student ID", "Roll No.", "Class & Section", "Gender", "Date of Birth", "Phone", "Parent / Guardian", "Actions"].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -913,7 +907,6 @@ const handleSave = async (form, photoFile) => {   // ← accept photoFile
                 </table>
               </div>
 
-              {/* ── Cards (mobile) ── */}
               <div className="sm:hidden grid grid-cols-1 gap-3">
                 {paginated.length > 0 ? paginated.map(s => (
                   <StudentCard key={s.id} student={s}
@@ -928,7 +921,6 @@ const handleSave = async (form, photoFile) => {   // ← accept photoFile
                 )}
               </div>
 
-              {/* ── Pagination ── */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between bg-white rounded-xl px-4 py-3 shadow-sm border border-gray-100">
                   <p className="text-xs text-gray-400">
@@ -938,12 +930,24 @@ const handleSave = async (form, photoFile) => {   // ← accept photoFile
                     <PaginationBtn disabled={page === 1} onClick={() => setPage(p => p - 1)}>
                       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
                     </PaginationBtn>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(n => (
-                      <button key={n} onClick={() => setPage(n)}
-                        className={`w-8 h-8 rounded-lg text-xs font-semibold transition-colors ${n === page ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-gray-100"}`}>
-                        {n}
-                      </button>
-                    ))}
+                    {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (page <= 3) {
+                        pageNum = i + 1;
+                      } else if (page >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = page - 2 + i;
+                      }
+                      return (
+                        <button key={pageNum} onClick={() => setPage(pageNum)}
+                          className={`w-8 h-8 rounded-lg text-xs font-semibold transition-colors ${pageNum === page ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-gray-100"}`}>
+                          {pageNum}
+                        </button>
+                      );
+                    })}
                     <PaginationBtn disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>
                       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
                     </PaginationBtn>
@@ -955,7 +959,6 @@ const handleSave = async (form, photoFile) => {   // ← accept photoFile
         </div>
       </main>
 
-      {/* ── Modals ── */}
       {viewStudent && <ViewModal student={viewStudent} onClose={() => setViewStudent(null)} />}
 
       {showAddEdit && (

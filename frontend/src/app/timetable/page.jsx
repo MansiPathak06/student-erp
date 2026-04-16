@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import Sidebar from "@/components/Sidebar";
+import { authHeaders } from "@/lib/auth";
 import {
   Bell, ChevronDown, Search, Download, Plus, X, Save,
   Clock, BookOpen, UserCog, Trash2, Pencil, CalendarDays,
@@ -37,13 +38,13 @@ const getColor = (subject) => SUBJECT_COLORS[subject] ?? DEFAULT_COLOR;
 // ─────────────────────────────────────────────
 // API HELPER
 // ─────────────────────────────────────────────
-function authHeaders() {
-  const token = localStorage.getItem("token");
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
+// function authHeaders() {
+//   const token = localStorage.getItem("token");
+//   return {
+//     "Content-Type": "application/json",
+//     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+//   };
+// }
 
 async function apiFetch(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -205,15 +206,7 @@ function PeriodModal({ initial, onClose, onSave, teachers, timetable, classId })
                 <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               </div>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Period Time</label>
-              <div className="relative">
-                <select value={form.period_time} onChange={e => { setForm(p => ({ ...p, period_time: e.target.value })); setError(""); }} className={selClass}>
-                  {PERIODS.map(p => <option key={p}>{p}</option>)}
-                </select>
-                <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              </div>
-            </div>
+         
           </div>
 
           {/* Teacher */}
@@ -575,7 +568,7 @@ export default function TimetablePage() {
                     <table className="w-full min-w-[800px]">
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50/70">
-                          <th className="px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400 w-28">Time</th>
+                          
                           {DAYS.map(day => (
                             <th key={day} className={`px-3 py-3.5 text-center text-[11px] font-bold uppercase tracking-wider w-36 ${
                               day === todayName ? "text-blue-600 bg-blue-50/50" : "text-gray-400"
@@ -588,12 +581,7 @@ export default function TimetablePage() {
                       <tbody className="divide-y divide-gray-50">
                         {PERIODS.map(period => (
                           <tr key={period} className="hover:bg-gray-50/30 transition-colors">
-                            <td className="px-4 py-3 border-r border-gray-100">
-                              <div className="flex items-center gap-1.5">
-                                <Clock size={12} className="text-gray-400 flex-shrink-0" />
-                                <span className="text-xs font-semibold text-gray-600 whitespace-nowrap">{period}</span>
-                              </div>
-                            </td>
+                           
                             {DAYS.map(day => (
                               <td key={day} className={`px-2 py-2 ${day === todayName ? "bg-blue-50/20" : ""}`}>
                                 <div
@@ -638,9 +626,7 @@ export default function TimetablePage() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50/70">
-                          {["Day", "Period", "Subject", "Teacher", "Actions"].map(h => (
-                            <th key={h} className="px-5 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400">{h}</th>
-                          ))}
+                         
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
@@ -654,11 +640,7 @@ export default function TimetablePage() {
                                   {isToday ? `★ ${entry.day}` : entry.day}
                                 </span>
                               </td>
-                              <td className="px-5 py-3.5">
-                                <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                                  <Clock size={12} className="text-gray-400" />{entry.period_time}
-                                </div>
-                              </td>
+                              
                               <td className="px-5 py-3.5">
                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${col.bg} ${col.text} ${col.border}`}>
                                   <span className={`w-1.5 h-1.5 rounded-full ${col.dot}`} />{entry.subject}

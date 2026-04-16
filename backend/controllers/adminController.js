@@ -147,6 +147,7 @@ async function generateStudentId() {
  
  
 // ── GET /api/admin/students ───────────────────────────────────────────────────
+// ── GET /api/admin/students ───────────────────────────────────────────────────
 const getAllStudents = async (req, res) => {
   try {
     const result = await pool.query(
@@ -154,6 +155,7 @@ const getAllStudents = async (req, res) => {
          s.*,
          u.name,
          u.email,
+         u.is_active,
          ct.name AS class_teacher,
          (
            SELECT ROUND(
@@ -178,6 +180,7 @@ const getAllStudents = async (req, res) => {
 };
  
  
+// ── POST /api/admin/students ──────────────────────────────────────────────────
 // ── POST /api/admin/students ──────────────────────────────────────────────────
 const createStudent = async (req, res) => {
   const {
@@ -211,8 +214,8 @@ const createStudent = async (req, res) => {
     // 1. Create auth user
     const hashedPassword = await bcrypt.hash(password, 10);
     const userResult = await client.query(
-      `INSERT INTO users (name, email, password, role)
-       VALUES ($1, $2, $3, 'student')
+      `INSERT INTO users (name, email, password, role, is_active)
+       VALUES ($1, $2, $3, 'student', true)
        RETURNING id`,
       [name, email, hashedPassword]
     );
@@ -221,16 +224,16 @@ const createStudent = async (req, res) => {
     // 2. Generate or use provided student ID
     const finalStudentId = student_id?.trim() || (await generateStudentId());
  
-    // 3. Create student record
+    // 3. Create student record - REMOVED is_active from here
     const studentResult = await client.query(
       `INSERT INTO students
          (user_id, student_id, roll_number, class_id, class, section,
           class_teacher, date_of_birth, gender, address, phone,
-          guardian_name, guardian_phone, fee_status, is_active)
+          guardian_name, guardian_phone, fee_status)
        VALUES
          ($1, $2, $3, $4, $5, $6,
           $7, $8, $9, $10, $11,
-          $12, $13, 'Pending', true)
+          $12, $13, 'Pending')
        RETURNING *`,
       [
         userId,
@@ -279,6 +282,7 @@ const createStudent = async (req, res) => {
  
  
 // ── PUT /api/admin/students/:id ───────────────────────────────────────────────
+// ── PUT /api/admin/students/:id ───────────────────────────────────────────────
 const updateStudent = async (req, res) => {
   const { id } = req.params;
   const {
@@ -321,7 +325,6 @@ const updateStudent = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
- 
  
 // ── DELETE /api/admin/students/:id ───────────────────────────────────────────
 const deleteStudent = async (req, res) => {
