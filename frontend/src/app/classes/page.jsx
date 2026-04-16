@@ -24,21 +24,21 @@ import Sidebar from "@/components/Sidebar";
 // ── Auth ──────────────────────────────────────────────────────────────────────
 const getToken = () => {
   if (typeof window === "undefined") return null;
-  
+
   // First try localStorage (your current method)
   let token = localStorage.getItem("token");
-  
+
   // If not found, try cookies (like the Teachers page does)
   if (!token) {
     const match = document.cookie.match(/(^| )token=([^;]+)/);
     token = match ? match[2] : null;
   }
-  
+
   // If still not found, try sessionStorage as fallback
   if (!token) {
     token = sessionStorage.getItem("token");
   }
-  
+
   return token;
 };
 
@@ -46,9 +46,6 @@ const authHeaders = () => ({
   "Content-Type": "application/json",
   Authorization: `Bearer ${getToken()}`,
 });
-
-
-
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
 const PALETTE = [
@@ -72,6 +69,8 @@ const AVATAR_COLORS = {
   pink: { bg: "bg-pink-100", text: "text-pink-700" },
 };
 const colorForId = (id) => PALETTE[id % PALETTE.length];
+
+// In your Add/Edit Class modal, add this validation
 
 // ── Summary Card ──────────────────────────────────────────────────────────────
 function SummaryCard({ label, value, icon: Icon, accent, bg, trend }) {
@@ -119,9 +118,59 @@ function ClassModal({ open, onClose, onSaved, editData, teachers }) {
   const change = (e) =>
     setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
 
+  // In your Add/Edit Class modal, add this validation
+  const handleClassTeacherChange = async (teacherId, grade, section) => {
+    // Check if this class already has a teacher
+    const response = await fetch(
+      `/api/admin/classes/check?grade=${grade}&section=${section}`,
+    );
+    const data = await response.json();
+
+    if (data.hasClassTeacher && data.teacherId !== teacherId) {
+      alert(`Class ${grade}-${section} already has a class teacher: ${data.teacherName}. 
+           Please remove them first before assigning a new one.`);
+      return false;
+    }
+    return true;
+  };
+
   const submit = async () => {
     if (!form.grade || !form.section)
       return setErr("Grade and section are required.");
+    // Check if class already has a teacher and we're trying to assign a different one
+    if (form.teacher_id) {
+      try {
+        const checkRes = await fetch(
+          `/api/admin/classes/check?grade=${form.grade}&section=${form.section}`,
+          { headers: authHeaders() },
+        );
+        const checkData = await checkRes.json();
+
+        if (
+          checkData.hasClassTeacher &&
+          checkData.teacherId !== parseInt(form.teacher_id)
+        ) {
+          return setErr(
+            `Class ${form.grade}-${form.section} already has a class teacher: ${checkData.teacherName}. ` +
+              `Please remove them first before assigning a new one.`,
+          );
+        }
+      } catch (err) {
+        console.error("Check error:", err);
+      }
+    }
+    const teacherCheckRes = await fetch(
+      `/api/admin/teachers/check-class?teacherId=${form.teacher_id}&excludeClassId=${editData?.dbId || ""}`,
+      { headers: authHeaders() },
+    );
+    const teacherCheckData = await teacherCheckRes.json();
+     if (teacherCheckData.hasClass) {
+        return setErr(
+          `Teacher is already the class teacher for Class ${teacherCheckData.grade}-${teacherCheckData.section}. ` +
+          `A teacher can only be class teacher for one class.`
+        );
+      }
+
     setSaving(true);
     setErr("");
     try {

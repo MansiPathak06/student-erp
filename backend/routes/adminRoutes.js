@@ -37,7 +37,8 @@ const {
   createStudent,
   updateStudent,
   deleteStudent,
-  uploadStudentPhoto,   // ← make sure this is exported from adminController
+  uploadStudentPhoto, 
+    // ← make sure this is exported from adminController
 } = require("../controllers/adminController");
 
 const {
@@ -45,7 +46,7 @@ const {
 } = require("../controllers/teacherController");
 
 const {
-  getAllClasses, getClassMeta, createClass, updateClass, deleteClass,
+  getAllClasses, getClassMeta, createClass, updateClass, deleteClass,checkTeacherClassAssignment,
 } = require("../controllers/classController");
 
 // ── Auth guard for ALL admin routes
@@ -61,6 +62,7 @@ router.post  ("/students",             createStudent);
 router.put   ("/students/:id",         updateStudent);
 router.delete("/students/:id",         deleteStudent);
 router.post  ("/students/:id/photo",   studentUpload.single("photo"), uploadStudentPhoto);
+router.get("/teachers/check-class", checkTeacherClassAssignment);
 
 // ── Teachers
 router.get   ("/teachers/meta",        getTeacherMeta);

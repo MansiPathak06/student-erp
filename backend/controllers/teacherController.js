@@ -35,55 +35,58 @@ const getSubjectColors = (subject) =>
 
 // ── Admin: GET /api/admin/teachers ───────────────────────────────────────────
 
+// UPDATE getAllTeachers function - Fix the teacher_id reference
 const getAllTeachers = async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT
+      SELECT 
         t.id,
-        t.employee_id,
-        t.subject,
-        t.department,
-        t.experience,
-        t.status,
-        t.pending_tasks,
-        t.teacher_type,
-        t.class_teacher_class,
-        t.class_teacher_section,
-        t.subject_assignments,
         t.phone,
-        t.profile_picture,
-        t.date_of_joining,
+        t.teacher_type AS "teacherType",
+        t.status,
+        t.created_at,
         u.name,
-        u.email
+        u.email,
+        (
+          SELECT json_agg(
+            json_build_object(
+              'subject', ts.subject,
+              'className', ts.class_name,
+              'section', ts.section
+            )
+          )
+          FROM teacher_subjects ts
+          WHERE ts.teacher_id = t.id
+        ) AS "subjectAssignments",
+        (
+          SELECT json_build_object(
+            'class', c.grade,
+            'section', c.section
+          )
+          FROM classes c
+          WHERE c.teacher_id = t.id
+          LIMIT 1
+        ) AS "classTeacherAssignment"
       FROM teachers t
       JOIN users u ON t.user_id = u.id
-      ORDER BY t.id
+      ORDER BY t.created_at DESC
     `);
 
-    const teachers = result.rows.map((t) => {
-      const { bg, text } = getSubjectColors(t.subject);
-      return {
-        id:                 t.employee_id || `TCH-${String(t.id).padStart(3, "0")}`,
-        dbId:               t.id,
-        name:               t.name,
-        email:              t.email,
-        phone:              t.phone       || "",
-        avatar:             getInitials(t.name),
-        avatarColor:        getAvatarColor(t.id),
-        department:         t.department  || "—",
-        subject:            t.subject     || "—",
-        subjectBg:          bg,
-        subjectText:        text,
-        experience:         t.experience  || 0,
-        status:             t.status      || "Active",
-        pendingTasks:       t.pending_tasks || 0,
-        teacherType:        t.teacher_type        || "Subject Teacher",
-        classTeacherClass:  t.class_teacher_class  || "",
-        classTeacherSection:t.class_teacher_section || "",
-        subjectAssignments: t.subject_assignments  || [],
-        profilePicture:     t.profile_picture      || null,
-      };
-    });
+    // Format the response
+    const teachers = result.rows.map(t => ({
+      id: `TCH-${String(t.id).padStart(3, "0")}`,
+      dbId: t.id,
+      name: t.name,
+      email: t.email,
+      phone: t.phone,
+      teacherType: t.teacherType || "Subject Teacher",
+      status: t.status || "Active",
+      subjectAssignments: t.subjectAssignments || [],
+      classTeacherClass: t.classTeacherAssignment?.class || "",
+      classTeacherSection: t.classTeacherAssignment?.section || "",
+      avatar: getInitials(t.name),
+      avatarColor: AVATAR_COLORS[t.id % AVATAR_COLORS.length],
+    }));
 
     res.json(teachers);
   } catch (err) {
@@ -113,135 +116,284 @@ const getTeacherMeta = async (req, res) => {
 // classTeacherClass, classTeacherSection, subjectAssignments JSON string,
 // profilePicture file, status)
 
+// Add this helper function at the top of teacherController.js
+const checkClassTeacherExists = async (client, grade, section, excludeTeacherId = null) => {
+  const query = `
+    SELECT c.id, c.teacher_id, u.name as teacher_name
+    FROM classes c
+    LEFT JOIN teachers t ON c.teacher_id = t.id
+    LEFT JOIN users u ON t.user_id = u.id
+    WHERE c.grade = $1 AND c.section = $2
+    ${excludeTeacherId ? 'AND c.teacher_id != $3' : ''}
+  `;
+  
+  const params = excludeTeacherId 
+    ? [grade, section, excludeTeacherId]
+    : [grade, section];
+    
+  const result = await client.query(query, params);
+  return result.rows[0] || null;
+};
+
+// UPDATE createTeacher function
 const createTeacher = async (req, res) => {
-  const {
-    name, email, password, phone,
-    teacherType, classTeacherClass, classTeacherSection,
-    subjectAssignments, status,
-  } = req.body;
-
-  // Basic validation
-  if (!name || !email || !password)
-    return res.status(400).json({ message: "name, email, and password are required" });
-
+  const { name, email, password, phone, teacherType, classTeacherClass, classTeacherSection, subjectAssignments, status } = req.body;
+  
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // 1. Hash password and create user
-    const hashed    = await bcrypt.hash(password, 10);
+    // Create user
+    const hashedPassword = await bcrypt.hash(password, 10);
     const userResult = await client.query(
-      `INSERT INTO users (name, email, password, role)
-       VALUES ($1, $2, $3, 'teacher') RETURNING id`,
-      [name.trim(), email.trim().toLowerCase(), hashed]
+      "INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, 'teacher') RETURNING id",
+      [name, email, hashedPassword]
     );
     const userId = userResult.rows[0].id;
 
-    // 2. Handle profile picture path (if uploaded via multer)
-    const profilePicture = req.file
-      ? `/uploads/teachers/${req.file.filename}`
-      : null;
-
-    // 3. Parse subject assignments
-    let parsedSubjectAssignments = [];
-    if (subjectAssignments) {
-      try {
-        parsedSubjectAssignments = JSON.parse(subjectAssignments);
-      } catch {
-        // ignore parse error — leave empty
-      }
-    }
-
-    // 4. Derive primary subject from first assignment (for legacy columns)
-    const primarySubject = parsedSubjectAssignments[0]?.subject || null;
-
-    // 5. Generate employee_id
-    const countResult  = await client.query("SELECT COUNT(*) FROM teachers");
-    const count        = parseInt(countResult.rows[0].count, 10) + 1;
-    const employeeId   = `TCH-${String(count).padStart(3, "0")}`;
-
-    // 6. Insert teacher
+    // Create teacher
     const teacherResult = await client.query(
-      `INSERT INTO teachers
-         (user_id, employee_id, phone, subject, status,
-          teacher_type, class_teacher_class, class_teacher_section,
-          subject_assignments, profile_picture)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-       RETURNING id`,
-      [
-        userId,
-        employeeId,
-        phone?.trim() || null,
-        primarySubject,
-        status || "Active",
-        teacherType || "Subject Teacher",
-        classTeacherClass  || null,
-        classTeacherSection || null,
-        JSON.stringify(parsedSubjectAssignments),
-        profilePicture,
-      ]
+      `INSERT INTO teachers (user_id, phone, teacher_type, status)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [userId, phone, teacherType, status || 'Active']
     );
     const teacherId = teacherResult.rows[0].id;
 
-    await client.query("COMMIT");
+    // Handle class teacher assignment
+    if ((teacherType === 'Class Teacher' || teacherType === 'Both') && classTeacherClass && classTeacherSection) {
+      // CHECK if class already has a teacher assigned
+      const existingClassTeacher = await checkClassTeacherExists(
+        client, 
+        classTeacherClass, 
+        classTeacherSection
+      );
+      
+      if (existingClassTeacher && existingClassTeacher.teacher_id) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ 
+          message: `Class ${classTeacherClass}-${classTeacherSection} already has a class teacher: ${existingClassTeacher.teacher_name}. 
+                   Please remove them first before assigning a new one.` 
+        });
+      }
+      
+      // Check if class already exists
+      let classResult = await client.query(
+        "SELECT id FROM classes WHERE grade = $1 AND section = $2",
+        [classTeacherClass, classTeacherSection]
+      );
+      
+      if (classResult.rows.length > 0) {
+        // Update existing class with this teacher
+        await client.query(
+          "UPDATE classes SET teacher_id = $1 WHERE id = $2",
+          [teacherId, classResult.rows[0].id]
+        );
+      } else {
+        // Create new class
+        await client.query(
+          `INSERT INTO classes (class_name, grade, section, teacher_id)
+           VALUES ($1, $2, $3, $4)`,
+          [`Class ${classTeacherClass}`, classTeacherClass, classTeacherSection, teacherId]
+        );
+      }
+    }
 
-    // 7. Return shaped teacher object (matches frontend shape)
-    const { bg, text } = getSubjectColors(primarySubject);
-    res.status(201).json({
-      id:                  employeeId,
-      dbId:                teacherId,
-      name:                name.trim(),
-      email:               email.trim().toLowerCase(),
-      phone:               phone?.trim() || "",
-      avatar:              getInitials(name),
-      avatarColor:         getAvatarColor(teacherId),
-      department:          "—",
-      subject:             primarySubject || "—",
-      subjectBg:           bg,
-      subjectText:         text,
-      experience:          0,
-      status:              status || "Active",
-      pendingTasks:        0,
-      teacherType:         teacherType || "Subject Teacher",
-      classTeacherClass:   classTeacherClass  || "",
-      classTeacherSection: classTeacherSection || "",
-      subjectAssignments:  parsedSubjectAssignments,
-      profilePicture:      profilePicture,
-    });
+    // Handle subject assignments (rest of your existing code)
+    if (subjectAssignments && (teacherType === 'Subject Teacher' || teacherType === 'Both')) {
+      const assignments = JSON.parse(subjectAssignments);
+      for (const assignment of assignments) {
+        if (assignment.subject && assignment.className && assignment.section) {
+          await client.query(
+            `INSERT INTO teacher_subjects (teacher_id, subject, class_name, section)
+             VALUES ($1, $2, $3, $4)`,
+            [teacherId, assignment.subject, assignment.className, assignment.section]
+          );
+        }
+      }
+    }
+
+    await client.query("COMMIT");
+    
+    const finalResult = await client.query(
+      `SELECT t.*, u.name, u.email 
+       FROM teachers t 
+       JOIN users u ON t.user_id = u.id 
+       WHERE t.id = $1`,
+      [teacherId]
+    );
+    
+    res.status(201).json(finalResult.rows[0]);
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("createTeacher:", err);
-    if (err.code === "23505")
-      return res.status(409).json({ message: "Email already exists" });
     res.status(500).json({ message: "Server error" });
   } finally {
     client.release();
   }
 };
 
-// ── Admin: DELETE /api/admin/teachers/:id ────────────────────────────────────
-
-const deleteTeacher = async (req, res) => {
-  const { id } = req.params;             // This is employee_id string like "TCH-001"
+// UPDATE updateTeacher function
+const updateTeacher = async (req, res) => {
+  const { id } = req.params;
+  const { name, phone, teacherType, classTeacherClass, classTeacherSection, subjectAssignments, status } = req.body;
+  
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // Find the teacher record
-    const teacher = await client.query(
-      "SELECT id, user_id FROM teachers WHERE employee_id = $1", [id]
+    // Get current teacher info
+    const currentTeacher = await client.query(
+      `SELECT t.*, u.name as user_name 
+       FROM teachers t 
+       JOIN users u ON t.user_id = u.id 
+       WHERE t.id = $1`,
+      [id]
     );
-    if (teacher.rows.length === 0)
+    
+    if (currentTeacher.rows.length === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ message: "Teacher not found" });
+    }
 
-    const { id: teacherId, user_id: userId } = teacher.rows[0];
+    // Update user info
+    if (name && name !== currentTeacher.rows[0].user_name) {
+      await client.query(
+        "UPDATE users SET name = $1 WHERE id = (SELECT user_id FROM teachers WHERE id = $2)",
+        [name, id]
+      );
+    }
 
-    // Delete dependent records first
-    await client.query("DELETE FROM classes     WHERE teacher_id = $1", [teacherId]);
-    await client.query("DELETE FROM assignments WHERE teacher_id = $1", [teacherId]);
-    await client.query("DELETE FROM teachers    WHERE id = $1",         [teacherId]);
-    await client.query("DELETE FROM users       WHERE id = $1",         [userId]);
+    // Update teacher info
+    await client.query(
+      `UPDATE teachers SET 
+        phone = COALESCE($1, phone),
+        teacher_type = COALESCE($2, teacher_type),
+        status = COALESCE($3, status),
+        updated_at = NOW()
+       WHERE id = $4`,
+      [phone, teacherType, status, id]
+    );
 
+    // Handle class teacher assignment
+    const newTeacherType = teacherType || currentTeacher.rows[0].teacher_type;
+    
+    if (newTeacherType === 'Class Teacher' || newTeacherType === 'Both') {
+      if (classTeacherClass && classTeacherSection) {
+        // CHECK if class already has a DIFFERENT teacher assigned
+        const existingClassTeacher = await checkClassTeacherExists(
+          client, 
+          classTeacherClass, 
+          classTeacherSection,
+          parseInt(id) // Exclude current teacher from check
+        );
+        
+        if (existingClassTeacher && existingClassTeacher.teacher_id) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({ 
+            message: `Class ${classTeacherClass}-${classTeacherSection} already has a class teacher: ${existingClassTeacher.teacher_name}. 
+                     Please remove them first before assigning a new one.` 
+          });
+        }
+        
+        // Check if class already exists
+        let classResult = await client.query(
+          "SELECT id FROM classes WHERE grade = $1 AND section = $2",
+          [classTeacherClass, classTeacherSection]
+        );
+        
+        if (classResult.rows.length > 0) {
+          // Update existing class with this teacher
+          await client.query(
+            "UPDATE classes SET teacher_id = $1 WHERE id = $2",
+            [id, classResult.rows[0].id]
+          );
+        } else {
+          // Create new class
+          await client.query(
+            `INSERT INTO classes (class_name, grade, section, teacher_id)
+             VALUES ($1, $2, $3, $4)`,
+            [`Class ${classTeacherClass}`, classTeacherClass, classTeacherSection, id]
+          );
+        }
+      }
+    } else {
+      // If teacher is no longer a class teacher, remove them from classes
+      await client.query(
+        "UPDATE classes SET teacher_id = NULL WHERE teacher_id = $1",
+        [id]
+      );
+    }
+
+    // Handle subject assignments
+    if (subjectAssignments) {
+      await client.query("DELETE FROM teacher_subjects WHERE teacher_id = $1", [id]);
+      
+      const assignments = JSON.parse(subjectAssignments);
+      for (const assignment of assignments) {
+        if (assignment.subject && assignment.className && assignment.section) {
+          await client.query(
+            `INSERT INTO teacher_subjects (teacher_id, subject, class_name, section)
+             VALUES ($1, $2, $3, $4)`,
+            [id, assignment.subject, assignment.className, assignment.section]
+          );
+        }
+      }
+    }
+
+    await client.query("COMMIT");
+    
+    // Get updated teacher
+    const finalResult = await client.query(
+      `SELECT t.*, u.name, u.email 
+       FROM teachers t 
+       JOIN users u ON t.user_id = u.id 
+       WHERE t.id = $1`,
+      [id]
+    );
+    
+    res.json(finalResult.rows[0]);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("updateTeacher:", err);
+    res.status(500).json({ message: "Server error" });
+  } finally {
+    client.release();
+  }
+};
+
+// DELETE /api/admin/teachers/:id
+const deleteTeacher = async (req, res) => {
+  const { id } = req.params;
+  
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Remove teacher from any classes they're assigned to
+    await client.query(
+      "UPDATE classes SET teacher_id = NULL WHERE teacher_id = $1",
+      [id]
+    );
+
+    // Get user_id
+    const teacherResult = await client.query(
+      "SELECT user_id FROM teachers WHERE id = $1",
+      [id]
+    );
+    
+    if (teacherResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Teacher not found" });
+    }
+    
+    const userId = teacherResult.rows[0].user_id;
+    
+    // Delete teacher
+    await client.query("DELETE FROM teachers WHERE id = $1", [id]);
+    
+    // Delete user
+    await client.query("DELETE FROM users WHERE id = $1", [userId]);
+    
     await client.query("COMMIT");
     res.json({ message: "Teacher deleted successfully" });
   } catch (err) {
@@ -394,122 +546,18 @@ const addResult = async (req, res) => {
 
 // ── Admin: PUT /api/admin/teachers/:id ───────────────────────────────────────
 
-const updateTeacher = async (req, res) => {
-  const { id } = req.params; // employee_id like "TCH-001"
-  const {
-    name, phone, teacherType, classTeacherClass, classTeacherSection,
-    subjectAssignments, status, password, existingProfilePicture,
-  } = req.body;
-
-  if (!name) return res.status(400).json({ message: "Name is required" });
-
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    // Find the teacher
-    const teacherResult = await client.query(
-      "SELECT t.id, t.user_id FROM teachers t WHERE t.employee_id = $1",
-      [id]
-    );
-    if (teacherResult.rows.length === 0) {
-      return res.status(404).json({ message: "Teacher not found" });
-    }
-    const { id: teacherId, user_id: userId } = teacherResult.rows[0];
-
-    // Update user name
-    await client.query("UPDATE users SET name = $1 WHERE id = $2", [name.trim(), userId]);
-
-    // Update password if provided
-    if (password && password.trim()) {
-      const hashed = await bcrypt.hash(password, 10);
-      await client.query("UPDATE users SET password = $1 WHERE id = $2", [hashed, userId]);
-    }
-
-    // Handle profile picture
-    let profilePicture = existingProfilePicture || null;
-    if (req.file) {
-      profilePicture = `/uploads/teachers/${req.file.filename}`;
-    }
-
-    // Parse subject assignments
-    let parsedSubjectAssignments = [];
-    if (subjectAssignments) {
-      try {
-        parsedSubjectAssignments = JSON.parse(subjectAssignments);
-      } catch (e) {
-        // ignore
-      }
-    }
-
-    const primarySubject = parsedSubjectAssignments[0]?.subject || null;
-
-    // Update teacher
-    await client.query(
-      `UPDATE teachers SET
-        phone = $1,
-        subject = $2,
-        status = $3,
-        teacher_type = $4,
-        class_teacher_class = $5,
-        class_teacher_section = $6,
-        subject_assignments = $7,
-        profile_picture = COALESCE($8, profile_picture)
-      WHERE id = $9`,
-      [
-        phone?.trim() || null,
-        primarySubject,
-        status || "Active",
-        teacherType || "Subject Teacher",
-        classTeacherClass || null,
-        classTeacherSection || null,
-        JSON.stringify(parsedSubjectAssignments),
-        profilePicture,
-        teacherId,
-      ]
-    );
-
-    await client.query("COMMIT");
-
-    // Fetch updated teacher data
-    const updated = await client.query(`
-      SELECT t.*, u.name, u.email
-      FROM teachers t
-      JOIN users u ON t.user_id = u.id
-      WHERE t.id = $1
-    `, [teacherId]);
-
-    const t = updated.rows[0];
-    const { bg, text } = getSubjectColors(t.subject);
-
-    res.json({
-      id: t.employee_id,
-      dbId: t.id,
-      name: t.name,
-      email: t.email,
-      phone: t.phone || "",
-      avatar: getInitials(t.name),
-      avatarColor: getAvatarColor(t.id),
-      department: t.department || "—",
-      subject: t.subject || "—",
-      subjectBg: bg,
-      subjectText: text,
-      experience: t.experience || 0,
-      status: t.status,
-      pendingTasks: t.pending_tasks || 0,
-      teacherType: t.teacher_type,
-      classTeacherClass: t.class_teacher_class || "",
-      classTeacherSection: t.class_teacher_section || "",
-      subjectAssignments: t.subject_assignments || [],
-      profilePicture: t.profile_picture,
-    });
-  } catch (err) {
-    await client.query("ROLLBACK");
-    console.error("updateTeacher:", err);
-    res.status(500).json({ message: "Server error" });
-  } finally {
-    client.release();
-  }
+// Add this helper function to check if teacher is already a class teacher
+const checkTeacherAlreadyClassTeacher = async (client, teacherId, excludeClassId = null) => {
+  const query = `
+    SELECT c.id, c.grade, c.section
+    FROM classes c
+    WHERE c.teacher_id = $1
+    ${excludeClassId ? 'AND c.id != $2' : ''}
+  `;
+  
+  const params = excludeClassId ? [teacherId, excludeClassId] : [teacherId];
+  const result = await client.query(query, params);
+  return result.rows[0] || null;
 };
 
 module.exports = {
@@ -524,4 +572,5 @@ module.exports = {
   createAssignment,
   addResult,
     updateTeacher, 
+    checkTeacherAlreadyClassTeacher,
 };
