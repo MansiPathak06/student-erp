@@ -7,6 +7,10 @@ const path   = require("path");
 const getInitials = (name = "") =>
   name.trim().split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
+// ADD THIS FUNCTION RIGHT HERE
+const getAvatarColor = (id) =>
+  AVATAR_COLORS[id % AVATAR_COLORS.length];
+
 const SUBJECT_COLORS = {
   Physics:        { bg: "bg-violet-100",  text: "text-violet-700"  },
   Mathematics:    { bg: "bg-sky-100",     text: "text-sky-700"     },
@@ -27,8 +31,7 @@ const AVATAR_COLORS = [
 const getSubjectColors = (subject) =>
   SUBJECT_COLORS[subject] ?? { bg: "bg-gray-100", text: "text-gray-700" };
 
-const getAvatarColor = (id) =>
-  AVATAR_COLORS[id % AVATAR_COLORS.length];
+
 
 // ── Admin: GET /api/admin/teachers ───────────────────────────────────────────
 

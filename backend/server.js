@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 
+
 const authRoutes    = require("./routes/authRoutes");
 const adminRoutes   = require("./routes/adminRoutes");
 const studentRoutes = require("./routes/studentRoutes");
@@ -24,6 +25,7 @@ app.use("/api/auth",    authRoutes);
 app.use("/api/admin",   adminRoutes);
 app.use("/api/student", studentRoutes);
 app.use("/api/teacher", teacherRoutes);
+app.use("/uploads", express.static("uploads"));
 
 // 404 handler
 app.use((req, res) => res.status(404).json({ message: "Route not found" }));

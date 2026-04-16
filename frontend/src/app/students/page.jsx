@@ -5,7 +5,6 @@ import Sidebar from "@/components/Sidebar";
 import { apiFetch } from "@/lib/api";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const CLASSES  = ["All", "6", "7", "8", "9", "10", "11", "12"];
 const SECTIONS = ["All", "A", "B", "C"];
 const GENDERS  = ["All", "Male", "Female"];
 const PER_PAGE = 10;
@@ -29,29 +28,33 @@ function avatarColor(name = "") {
 function normalizeStudent(s) {
   return {
     id:             s.id,
+    studentId:      s.student_id    || "",
     userId:         s.user_id,
-    name:           s.name        || "",
-    email:          s.email       || "",
-    roll:           s.roll_number || "",
-    class:          s.class       || "",
-    section:        s.section     || "",
-    gender:         s.gender      || "",
+    name:           s.name          || "",
+    email:          s.email         || "",
+    roll:           s.roll_number   || "",
+    class:          s.class         || "",
+    section:        s.section       || "",
+    classTeacher:   s.class_teacher || "",
+    gender:         s.gender        || "",
     dob:            s.date_of_birth ? s.date_of_birth.slice(0, 10) : "",
-    address:        s.address     || "",
-    phone:          s.phone       || "",
+    address:        s.address       || "",
+    phone:          s.phone         || "",
     parentName:     s.guardian_name  || "",
     parentContact:  s.guardian_phone || "",
-    fee:            s.fee_status  || "Pending",
+    fee:            s.fee_status    || "Pending",
     attendance:     typeof s.attendance_pct !== "undefined"
                       ? Number(s.attendance_pct)
                       : 0,
     isActive:       s.is_active,
+    photoUrl: s.photo_url || null, 
   };
 }
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 const api = {
   list:   ()       => apiFetch("/admin/students"),
+  meta:   ()       => apiFetch("/admin/students/meta"),        // classes + teachers
   create: (body)   => apiFetch("/admin/students", { method: "POST",   body: JSON.stringify(body) }),
   update: (id, b)  => apiFetch(`/admin/students/${id}`, { method: "PUT",    body: JSON.stringify(b) }),
   remove: (id)     => apiFetch(`/admin/students/${id}`, { method: "DELETE" }),
@@ -59,9 +62,9 @@ const api = {
 
 // ─── CSV Export ───────────────────────────────────────────────────────────────
 function exportCSV(students) {
-  const headers = ["Name","Roll","Class","Section","Gender","Attendance","Fee","Email","Phone","Parent","Parent Contact"];
+  const headers = ["Student ID","Name","Roll","Class","Section","Class Teacher","Gender","Attendance","Fee","Email","Phone","Parent","Parent Contact"];
   const rows    = students.map(s => [
-    s.name, s.roll, s.class, s.section, s.gender,
+    s.studentId, s.name, s.roll, s.class, s.section, s.classTeacher, s.gender,
     s.attendance + "%", s.fee, s.email, s.phone, s.parentName, s.parentContact,
   ]);
   const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
@@ -111,9 +114,10 @@ function AttendanceBar({ pct }) {
   );
 }
 
-// ─── Inline Toast ─────────────────────────────────────────────────────────────
+// ─── Toast ────────────────────────────────────────────────────────────────────
 function Toast({ msg, type, onDismiss }) {
   useEffect(() => {
+    if (!msg) return;
     const t = setTimeout(onDismiss, 3500);
     return () => clearTimeout(t);
   }, [msg]);
@@ -146,11 +150,13 @@ function StudentRow({ student, selected, onSelect, onView, onEdit, onDelete }) {
           </div>
         </div>
       </td>
+      <td className="px-4 py-3 text-xs text-gray-500 font-mono">{student.studentId || "—"}</td>
       <td className="px-4 py-3 text-sm text-gray-600 font-mono">{student.roll}</td>
       <td className="px-4 py-3 text-sm text-gray-700">
         <span className="font-medium">Class {student.class}</span>
         <span className="text-gray-400"> – {student.section}</span>
       </td>
+      <td className="px-4 py-3 text-xs text-gray-500 max-w-[120px] truncate">{student.classTeacher || "—"}</td>
       <td className="px-4 py-3 text-sm text-gray-600">{student.gender}</td>
       <td className="px-4 py-3">
         <AttendanceBar pct={student.attendance} />
@@ -186,6 +192,7 @@ function StudentCard({ student, onView, onEdit, onDelete }) {
           <div>
             <p className="font-semibold text-gray-900">{student.name}</p>
             <p className="text-xs text-gray-400">Roll #{student.roll}</p>
+            {student.studentId && <p className="text-xs text-gray-400 font-mono">{student.studentId}</p>}
           </div>
         </div>
         <FeeBadge status={student.fee} />
@@ -193,6 +200,7 @@ function StudentCard({ student, onView, onEdit, onDelete }) {
       <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 mb-3">
         <span>Class {student.class} – {student.section}</span>
         <span>{student.gender}</span>
+        {student.classTeacher && <span className="col-span-2 text-gray-400">Teacher: {student.classTeacher}</span>}
       </div>
       <AttendanceBar pct={student.attendance} />
       <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
@@ -218,7 +226,8 @@ function ViewModal({ student, onClose }) {
         <div className="text-white">
           <p className="text-xl font-bold">{student.name}</p>
           <p className="text-blue-100 text-sm">Class {student.class} – Section {student.section}</p>
-          <p className="text-blue-200 text-xs mt-1">Roll No: {student.roll}</p>
+          <p className="text-blue-200 text-xs mt-0.5">Roll No: {student.roll}</p>
+          {student.studentId && <p className="text-blue-200 text-xs">Student ID: {student.studentId}</p>}
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -228,6 +237,11 @@ function ViewModal({ student, onClose }) {
           <InfoRow label="Email"          value={student.email}   />
           <InfoRow label="Phone"          value={student.phone}   />
           <InfoRow label="Address"        value={student.address} />
+        </InfoBlock>
+        <InfoBlock title="Class Info">
+          <InfoRow label="Class"         value={student.class}       />
+          <InfoRow label="Section"       value={student.section}     />
+          <InfoRow label="Class Teacher" value={student.classTeacher}/>
         </InfoBlock>
         <InfoBlock title="Parent / Guardian">
           <InfoRow label="Name"    value={student.parentName}    />
@@ -280,53 +294,150 @@ function InfoRow({ label, value }) {
 
 // ─── Add / Edit Modal ─────────────────────────────────────────────────────────
 const EMPTY_FORM = {
-  name: "", email: "", password: "", roll: "", class: "", section: "",
+  name: "", email: "", password: "", roll: "", studentId: "",
+  classId: "", class: "", section: "", classTeacher: "",
   dob: "", gender: "", address: "", phone: "", parentName: "", parentContact: "",
   fee: "Pending",
 };
 
-function AddEditModal({ student, onClose, onSave, saving }) {
+function AddEditModal({ student, classMeta, onClose, onSave, saving }) {
   const isEdit = !!student;
-  const [form, setForm] = useState(isEdit ? { ...student, password: "" } : { ...EMPTY_FORM });
+
+  const [form, setForm] = useState(() =>
+    isEdit ? { ...student, password: "", classId: student.classId || "" }
+           : { ...EMPTY_FORM }
+  );
+
+  // ── Photo state (lives here, not in page) ──────────────────────────────
+  const [photoFile,    setPhotoFile]    = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(student?.photo_url || null);
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { alert("Photo must be under 2MB."); return; }
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+  // ───────────────────────────────────────────────────────────────────────
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const handleClassChange = (classId) => {
+    const found = classMeta.find(c => String(c.id) === String(classId));
+    if (found) {
+      setForm(f => ({
+        ...f,
+        classId:      String(found.id),
+        class:        found.class_name   || found.name || "",
+        section:      found.section      || "",
+        classTeacher: found.teacher_name || found.class_teacher || "",
+      }));
+    } else {
+      setForm(f => ({ ...f, classId: "", class: "", section: "", classTeacher: "" }));
+    }
+  };
+
   const handleSave = () => {
-    if (!form.name || !form.roll || !form.class) return alert("Name, Roll Number, and Class are required.");
-    if (!isEdit && !form.email)    return alert("Email is required for new students.");
-    if (!isEdit && !form.password) return alert("Password is required for new students.");
-    onSave(form);
+    if (!form.name.trim())                return alert("Student name is required.");
+    if (!form.roll.trim())                return alert("Roll number is required.");
+    if (!form.classId)                    return alert("Please select a class.");
+    if (!isEdit && !form.email.trim())    return alert("Email is required.");
+    if (!isEdit && !form.password.trim()) return alert("Password is required.");
+    // Pass photoFile up so the parent can upload it after save
+    onSave(form, photoFile);
   };
 
   return (
     <ModalWrapper onClose={onClose} wide>
       <div className="flex items-center justify-between mb-5">
-        <h2 className="text-lg font-bold text-gray-900">{isEdit ? "Edit Student" : "Add New Student"}</h2>
-        <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"><CloseIcon /></button>
+        <h2 className="text-lg font-bold text-gray-900">
+          {isEdit ? "Edit Student" : "Add New Student"}
+        </h2>
+        <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+          <CloseIcon />
+        </button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Full Name *"     value={form.name}     onChange={v => set("name", v)}     placeholder="e.g. Aarav Sharma" />
-        <Field label="Roll Number *"   value={form.roll}     onChange={v => set("roll", v)}     placeholder="e.g. 1001" />
+
+        {/* ── Photo upload — TOP of form ─────────────────────────────── */}
+        <div className="sm:col-span-2 flex items-center gap-4">
+          <div className="relative w-20 h-20 rounded-full overflow-hidden bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center flex-shrink-0">
+            {photoPreview
+              ? <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+              : <Avatar name={form.name || "?"} size="lg" />
+            }
+          </div>
+          <div>
+            <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              Upload Photo
+              <input type="file" accept="image/jpeg,image/png,image/webp"
+                onChange={handlePhotoChange} className="hidden" />
+            </label>
+            <p className="text-xs text-gray-400 mt-1">JPG, PNG or WebP · Max 2MB</p>
+            {photoFile && (
+              <p className="text-xs text-green-600 mt-1">✓ {photoFile.name}</p>
+            )}
+          </div>
+        </div>
+        {/* ─────────────────────────────────────────────────────────── */}
+
+        <Field label={isEdit ? "Student ID" : "Student ID (leave blank to auto-generate)"}
+          value={form.studentId} onChange={v => set("studentId", v)}
+          placeholder="e.g. STU-2024-001" disabled={isEdit} />
+
+        <Field label="Full Name *" value={form.name}
+          onChange={v => set("name", v)} placeholder="e.g. Aarav Sharma" />
+
+        <Field label="Roll Number *" value={form.roll}
+          onChange={v => set("roll", v)} placeholder="e.g. 42" />
 
         {!isEdit && <>
-          <Field label="Email *"       value={form.email}    onChange={v => set("email", v)}    placeholder="student@school.edu" type="email" />
-          <Field label="Password *"    value={form.password} onChange={v => set("password", v)} placeholder="Min 6 characters"   type="password" />
+          <Field label="Email *" value={form.email}
+            onChange={v => set("email", v)} placeholder="student@school.edu" type="email" />
+          <Field label="Password *" value={form.password}
+            onChange={v => set("password", v)} placeholder="Min 6 characters" type="password" />
         </>}
 
-        <div>
+        <div className="sm:col-span-2">
           <label className="field-label">Class *</label>
-          <select value={form.class} onChange={e => set("class", e.target.value)} className="field-input">
-            <option value="">Select class</option>
-            {["6","7","8","9","10","11","12"].map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+          {classMeta.length === 0 ? (
+            <p className="text-xs text-amber-600 mt-1">⚠ No classes found. Please create classes first.</p>
+          ) : (
+            <select value={form.classId} onChange={e => handleClassChange(e.target.value)} className="field-input">
+              <option value="">— Select a class —</option>
+              {classMeta.map(c => (
+                <option key={c.id} value={c.id}>
+                  Class {c.class_name || c.name} – Section {c.section}
+                  {c.teacher_name ? ` (Teacher: ${c.teacher_name})` : ""}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        <div>
+          <label className="field-label">Grade / Class</label>
+          <input type="text" value={form.class ? `Class ${form.class}` : ""} readOnly
+            placeholder="Auto-filled" className="field-input bg-gray-50 text-gray-500 cursor-not-allowed" />
         </div>
         <div>
           <label className="field-label">Section</label>
-          <select value={form.section} onChange={e => set("section", e.target.value)} className="field-input">
-            <option value="">Select section</option>
-            {["A","B","C"].map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+          <input type="text" value={form.section} readOnly
+            placeholder="Auto-filled" className="field-input bg-gray-50 text-gray-500 cursor-not-allowed" />
         </div>
+        <div className="sm:col-span-2">
+          <label className="field-label">Class Teacher</label>
+          <input type="text" value={form.classTeacher} readOnly
+            placeholder="Auto-filled" className="field-input bg-gray-50 text-gray-500 cursor-not-allowed" />
+        </div>
+
         <div>
           <label className="field-label">Gender</label>
           <select value={form.gender} onChange={e => set("gender", e.target.value)} className="field-input">
@@ -334,18 +445,11 @@ function AddEditModal({ student, onClose, onSave, saving }) {
             <option>Male</option><option>Female</option><option>Other</option>
           </select>
         </div>
-        <div>
-          <label className="field-label">Fee Status</label>
-          <select value={form.fee} onChange={e => set("fee", e.target.value)} className="field-input">
-            <option value="Pending">Pending</option>
-            <option value="Paid">Paid</option>
-            <option value="Overdue">Overdue</option>
-          </select>
-        </div>
-        <Field label="Date of Birth"   value={form.dob}           onChange={v => set("dob", v)}           type="date" />
-        <Field label="Phone"           value={form.phone}         onChange={v => set("phone", v)}         placeholder="10-digit number" />
-        <Field label="Parent Name"     value={form.parentName}    onChange={v => set("parentName", v)}    placeholder="Guardian's full name" />
-        <Field label="Parent Contact"  value={form.parentContact} onChange={v => set("parentContact", v)} placeholder="10-digit number" />
+        <Field label="Date of Birth" value={form.dob} onChange={v => set("dob", v)} type="date" />
+        <Field label="Phone" value={form.phone} onChange={v => set("phone", v)} placeholder="10-digit number" />
+        <Field label="Parent Name" value={form.parentName} onChange={v => set("parentName", v)} placeholder="Guardian's full name" />
+        <Field label="Parent Contact" value={form.parentContact} onChange={v => set("parentContact", v)} placeholder="10-digit number" />
+       
         <div className="sm:col-span-2">
           <Field label="Address" value={form.address} onChange={v => set("address", v)} placeholder="Full address" />
         </div>
@@ -353,11 +457,11 @@ function AddEditModal({ student, onClose, onSave, saving }) {
 
       <div className="flex gap-3 mt-5 pt-4 border-t border-gray-100">
         <button onClick={onClose} disabled={saving}
-          className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
+          className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50">
           Cancel
         </button>
         <button onClick={handleSave} disabled={saving}
-          className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-blue-700 transition-all shadow-md shadow-blue-200 disabled:opacity-60 flex items-center justify-center gap-2">
+          className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-blue-700 shadow-md shadow-blue-200 disabled:opacity-60 flex items-center justify-center gap-2">
           {saving && <Spinner />}
           {isEdit ? "Save Changes" : "Add Student"}
         </button>
@@ -366,12 +470,18 @@ function AddEditModal({ student, onClose, onSave, saving }) {
   );
 }
 
-function Field({ label, value, onChange, placeholder, type = "text" }) {
+function Field({ label, value, onChange, placeholder, type = "text", disabled = false }) {
   return (
     <div>
       <label className="field-label">{label}</label>
-      <input type={type} value={value} onChange={e => onChange(e.target.value)}
-        placeholder={placeholder} className="field-input" />
+      <input
+        type={type}
+        value={value}
+        onChange={e => onChange && onChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        className={`field-input ${disabled ? "bg-gray-50 text-gray-400 cursor-not-allowed" : ""}`}
+      />
     </div>
   );
 }
@@ -427,14 +537,20 @@ function Spinner() {
     </svg>
   );
 }
+
 function Select({ value, onChange, options, label }) {
   return (
     <select value={value} onChange={e => onChange(e.target.value)}
       className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 cursor-pointer">
-      {options.map(o => <option key={o} value={o}>{o === "All" ? `All ${label}es` : `${label} ${o}`}</option>)}
+      {options.map(o => (
+        <option key={o} value={o}>
+          {o === "All" ? `All ${label}s` : label === "Section" ? `Section ${o}` : o}
+        </option>
+      ))}
     </select>
   );
 }
+
 function PaginationBtn({ children, onClick, disabled }) {
   return (
     <button onClick={onClick} disabled={disabled}
@@ -453,6 +569,7 @@ const CloseIcon = () => <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none"
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function StudentsPage() {
   const [students,       setStudents]       = useState([]);
+  const [classMeta,      setClassMeta]      = useState([]);   // [{id, class_name, section, teacher_name}]
   const [loading,        setLoading]        = useState(true);
   const [fetchError,     setFetchError]     = useState("");
   const [saving,         setSaving]         = useState(false);
@@ -469,21 +586,35 @@ export default function StudentsPage() {
 
   // Modals
   const [viewStudent,    setViewStudent]    = useState(null);
-  const [editStudent,    setEditStudent]    = useState(null);   // null=closed, {}=new, {..}=edit
+  const [editStudent,    setEditStudent]    = useState(null);
   const [showAddEdit,    setShowAddEdit]    = useState(false);
-  const [deleteTarget,   setDeleteTarget]   = useState(null);  // { ids: [], bulk: false }
+  const [deleteTarget,   setDeleteTarget]   = useState(null);
+
+ 
 
   // Toast
-  const [toast,          setToast]          = useState({ msg: "", type: "success" });
+  const [toast, setToast] = useState({ msg: "", type: "success" });
   const showToast = (msg, type = "success") => setToast({ msg, type });
 
-  // ── Fetch all students ──
-  const fetchStudents = useCallback(async () => {
+  // ── Derive unique class list for filter dropdown ──
+  const classOptions = useMemo(() => {
+    const unique = [...new Set(students.map(s => s.class))].filter(Boolean).sort();
+    return ["All", ...unique];
+  }, [students]);
+
+
+
+  // ── Fetch students + class meta together ──
+  const fetchAll = useCallback(async () => {
     setLoading(true);
     setFetchError("");
     try {
-      const data = await api.list();
-      setStudents((data || []).map(normalizeStudent));
+      const [studentsData, metaData] = await Promise.all([
+        api.list(),
+        api.meta().catch(() => []),   // graceful fallback if endpoint missing
+      ]);
+      setStudents((studentsData || []).map(normalizeStudent));
+      setClassMeta(metaData || []);
     } catch (err) {
       setFetchError("Failed to load students. Please refresh.");
     } finally {
@@ -491,13 +622,18 @@ export default function StudentsPage() {
     }
   }, []);
 
-  useEffect(() => { fetchStudents(); }, [fetchStudents]);
+  useEffect(() => { fetchAll(); }, [fetchAll]);
 
   // ── Filter & paginate ──
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return students.filter(s => {
-      const matchSearch  = !q || s.name.toLowerCase().includes(q) || s.roll.includes(q) || `class ${s.class}`.includes(q) || s.email.toLowerCase().includes(q);
+      const matchSearch  = !q
+        || s.name.toLowerCase().includes(q)
+        || s.roll.includes(q)
+        || s.studentId.toLowerCase().includes(q)
+        || `class ${s.class}`.includes(q)
+        || s.email.toLowerCase().includes(q);
       const matchClass   = filterClass   === "All" || s.class   === filterClass;
       const matchSection = filterSection === "All" || s.section === filterSection;
       const matchGender  = filterGender  === "All" || s.gender  === filterGender;
@@ -509,65 +645,82 @@ export default function StudentsPage() {
   const paginated  = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   // ── Selection ──
-  const toggleSelect = id  => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  const toggleSelect = id => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
   const toggleAll    = ()  => setSelected(s => s.length === paginated.length ? [] : paginated.map(s => s.id));
 
   // ── Save (create / update) ──
-  const handleSave = async (form) => {
-    setSaving(true);
-    try {
-      if (form.id) {
-        // UPDATE
-        const body = {
-          class:          form.class,
-          section:        form.section,
-          phone:          form.phone,
-          address:        form.address,
-          fee_status:     form.fee,
-          guardian_name:  form.parentName,
-          guardian_phone: form.parentContact,
-        };
-        await api.update(form.id, body);
-        showToast("Student updated successfully.");
-      } else {
-        // CREATE
-        const body = {
-          name:            form.name,
-          email:           form.email,
-          password:        form.password,
-          roll_number:     form.roll,
-          class:           form.class,
-          section:         form.section,
-          date_of_birth:   form.dob,
-          gender:          form.gender,
-          address:         form.address,
-          phone:           form.phone,
-          guardian_name:   form.parentName,
-          guardian_phone:  form.parentContact,
-        };
-        await api.create(body);
-        showToast("Student added successfully.");
-      }
-      setShowAddEdit(false);
-      setEditStudent(null);
-      await fetchStudents();
-    } catch (err) {
-      showToast(err?.message || "Failed to save student.", "error");
-    } finally {
-      setSaving(false);
+const handleSave = async (form, photoFile) => {   // ← accept photoFile
+  setSaving(true);
+  try {
+    let savedId = form.id;   // for edit; for create we get it from response
+
+    if (form.id) {
+      const body = {
+        class_id:       form.classId,
+        class:          form.class,
+        section:        form.section,
+        class_teacher:  form.classTeacher,
+        phone:          form.phone,
+        address:        form.address,
+        fee_status:     form.fee,
+        guardian_name:  form.parentName,
+        guardian_phone: form.parentContact,
+      };
+      await api.update(form.id, body);
+      showToast("Student updated successfully.");
+    } else {
+      const body = {
+        student_id:     form.studentId || undefined,
+        name:           form.name,
+        email:          form.email,
+        password:       form.password,
+        roll_number:    form.roll,
+        class_id:       form.classId,
+        class:          form.class,
+        section:        form.section,
+        class_teacher:  form.classTeacher,
+        date_of_birth:  form.dob,
+        gender:         form.gender,
+        address:        form.address,
+        phone:          form.phone,
+        guardian_name:  form.parentName,
+        guardian_phone: form.parentContact,
+      };
+      const created = await api.create(body);
+      savedId = created.id;   // grab new student's id
+      showToast("Student added successfully.");
     }
-  };
 
-  // ── Delete single ──
-  const handleDeleteRequest = (id) => setDeleteTarget({ ids: [id], bulk: false });
+    // ── Upload photo if one was selected ───────────────────────────────
+    if (photoFile && savedId) {
+      try {
+        const formData = new FormData();
+        formData.append("photo", photoFile);
+        await apiFetch(`/admin/students/${savedId}/photo`, {
+          method: "POST",
+          body: formData,
+          // Don't set Content-Type — browser sets it with boundary automatically
+        });
+      } catch {
+        showToast("Student saved but photo upload failed.", "error");
+      }
+    }
+    // ──────────────────────────────────────────────────────────────────
 
-  // ── Bulk delete ──
-  const handleBulkDeleteRequest = () => {
-    if (selected.length === 0) return;
-    setDeleteTarget({ ids: [...selected], bulk: true });
-  };
+    setShowAddEdit(false);
+    setEditStudent(null);
+    await fetchAll();
+  } catch (err) {
+    showToast(err?.message || "Failed to save student.", "error");
+  } finally {
+    setSaving(false);
+  }
+};
 
-  // ── Confirm delete ──
+  // ── Delete ──
+  const handleDeleteRequest      = (id)  => setDeleteTarget({ ids: [id], bulk: false });
+  const handleBulkDeleteRequest  = ()    => { if (selected.length) setDeleteTarget({ ids: [...selected], bulk: true }); };
+
   const confirmDelete = async () => {
     setSaving(true);
     try {
@@ -575,8 +728,8 @@ export default function StudentsPage() {
       showToast(`${deleteTarget.ids.length > 1 ? `${deleteTarget.ids.length} students` : "Student"} deleted.`);
       setSelected(s => s.filter(x => !deleteTarget.ids.includes(x)));
       setDeleteTarget(null);
-      await fetchStudents();
-    } catch (err) {
+      await fetchAll();
+    } catch {
       showToast("Failed to delete. Please try again.", "error");
     } finally {
       setSaving(false);
@@ -611,17 +764,17 @@ export default function StudentsPage() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {/* Search */}
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 w-full sm:w-60">
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 w-full sm:w-64">
               <svg className="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
               <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-                placeholder="Search name, roll, class…"
+                placeholder="Search name, ID, roll, class…"
                 className="bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none w-full" />
             </div>
 
             {/* Refresh */}
-            <button onClick={fetchStudents} title="Refresh"
+            <button onClick={fetchAll} title="Refresh"
               className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
@@ -656,7 +809,7 @@ export default function StudentsPage() {
           {fetchError && (
             <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl flex items-center justify-between">
               {fetchError}
-              <button onClick={fetchStudents} className="text-red-700 font-semibold hover:underline text-xs ml-4">Retry</button>
+              <button onClick={fetchAll} className="text-red-700 font-semibold hover:underline text-xs ml-4">Retry</button>
             </div>
           )}
 
@@ -681,14 +834,27 @@ export default function StudentsPage() {
           {/* ── Filters ── */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3 flex flex-wrap items-center gap-3">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Filters</span>
-            <Select value={filterClass}   onChange={v => { setFilterClass(v);   setPage(1); }} options={CLASSES}  label="Class"   />
+
+            {/* Dynamic class filter from actual student data */}
+            <select
+              value={filterClass}
+              onChange={e => { setFilterClass(e.target.value); setPage(1); }}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 cursor-pointer"
+            >
+              {classOptions.map(o => (
+                <option key={o} value={o}>{o === "All" ? "All Classes" : `Class ${o}`}</option>
+              ))}
+            </select>
+
             <Select value={filterSection} onChange={v => { setFilterSection(v); setPage(1); }} options={SECTIONS} label="Section" />
             <Select value={filterGender}  onChange={v => { setFilterGender(v);  setPage(1); }} options={GENDERS}  label="Gender"  />
+
             {(filterClass !== "All" || filterSection !== "All" || filterGender !== "All" || search) && (
               <button onClick={resetFilters} className="text-xs text-red-500 font-semibold hover:text-red-600 underline underline-offset-2">
                 Reset
               </button>
             )}
+
             <div className="ml-auto flex items-center gap-3">
               <span className="text-xs text-gray-400">{filtered.length} student{filtered.length !== 1 ? "s" : ""} found</span>
               {selected.length > 0 && (
@@ -712,8 +878,8 @@ export default function StudentsPage() {
           ) : (
             <>
               {/* ── Table (desktop) ── */}
-              <div className="hidden sm:block bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <table className="w-full text-sm">
+              <div className="hidden sm:block bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden overflow-x-auto">
+                <table className="w-full text-sm min-w-[900px]">
                   <thead className="bg-gray-50 border-b border-gray-100">
                     <tr>
                       <th className="px-4 py-3 text-left w-10">
@@ -722,8 +888,8 @@ export default function StudentsPage() {
                           onChange={toggleAll}
                           className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer" />
                       </th>
-                      {["Profile","Roll No.","Class","Gender","Attendance","Fee Status","Actions"].map(h => (
-                        <th key={h} className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">{h}</th>
+                      {["Profile","Student ID","Roll No.","Class","Class Teacher","Gender","Attendance","Fee Status","Actions"].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -732,11 +898,11 @@ export default function StudentsPage() {
                       <StudentRow key={s.id} student={s} selected={selected.includes(s.id)}
                         onSelect={toggleSelect}
                         onView={setViewStudent}
-                        onEdit={s => { setEditStudent(s); setShowAddEdit(true); }}
+                        onEdit={st => { setEditStudent(st); setShowAddEdit(true); }}
                         onDelete={handleDeleteRequest} />
                     )) : (
                       <tr>
-                        <td colSpan={8} className="text-center py-16 text-gray-400">
+                        <td colSpan={10} className="text-center py-16 text-gray-400">
                           <div className="text-4xl mb-2">🔍</div>
                           <p className="font-medium">No students found</p>
                           <p className="text-xs mt-1">Try adjusting your filters or add a new student</p>
@@ -752,7 +918,7 @@ export default function StudentsPage() {
                 {paginated.length > 0 ? paginated.map(s => (
                   <StudentCard key={s.id} student={s}
                     onView={setViewStudent}
-                    onEdit={s => { setEditStudent(s); setShowAddEdit(true); }}
+                    onEdit={st => { setEditStudent(st); setShowAddEdit(true); }}
                     onDelete={handleDeleteRequest} />
                 )) : (
                   <div className="text-center py-16 text-gray-400">
@@ -795,6 +961,7 @@ export default function StudentsPage() {
       {showAddEdit && (
         <AddEditModal
           student={editStudent}
+          classMeta={classMeta}
           saving={saving}
           onClose={() => { setShowAddEdit(false); setEditStudent(null); }}
           onSave={handleSave}
@@ -810,7 +977,6 @@ export default function StudentsPage() {
         />
       )}
 
-      {/* ── Toast ── */}
       <Toast msg={toast.msg} type={toast.type} onDismiss={() => setToast({ msg: "", type: "success" })} />
     </div>
   );

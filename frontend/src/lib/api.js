@@ -12,7 +12,7 @@ export async function apiFetch(path, options = {}) {
     ...options,
     credentials: "include",
     headers: {
-      "Content-Type": "application/json",
+      // "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },

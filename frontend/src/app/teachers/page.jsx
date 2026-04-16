@@ -1353,7 +1353,7 @@ const [showEditModal, setShowEditModal] = useState(false);
   const toggleAll = (ids) =>
     setSelected((p) => (p.length === ids.length ? [] : ids));
 
- const handleSaved = (updatedTeacher) => {
+const handleSaved = (updatedTeacher) => {
   setTeachers(prev => {
     const index = prev.findIndex(t => t.id === updatedTeacher.id);
     if (index !== -1) {
@@ -1362,7 +1362,7 @@ const [showEditModal, setShowEditModal] = useState(false);
       newTeachers[index] = {
         ...updatedTeacher,
         avatar: getInitials(updatedTeacher.name),
-        avatarColor: getAvatarColor(updatedTeacher.dbId || index),
+        avatarColor: AVATAR_COLORS[(updatedTeacher.dbId || index) % AVATAR_COLORS.length],
       };
       return newTeachers;
     } else {
