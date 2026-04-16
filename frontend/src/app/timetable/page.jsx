@@ -15,7 +15,6 @@ import {
 const API_BASE = "http://localhost:5000/api/admin";
 
 const DAYS    = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const PERIODS = ["8:00 AM", "9:00 AM", "10:00 AM", "11:00 AM", "12:00 PM", "1:00 PM", "2:00 PM", "3:00 PM"];
 
 const SUBJECT_COLORS = {
   "Physics":        { bg: "bg-blue-50",    text: "text-blue-700",    border: "border-blue-200",    dot: "bg-blue-500"    },
@@ -38,14 +37,6 @@ const getColor = (subject) => SUBJECT_COLORS[subject] ?? DEFAULT_COLOR;
 // ─────────────────────────────────────────────
 // API HELPER
 // ─────────────────────────────────────────────
-// function authHeaders() {
-//   const token = localStorage.getItem("token");
-//   return {
-//     "Content-Type": "application/json",
-//     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-//   };
-// }
-
 async function apiFetch(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -106,7 +97,6 @@ function PeriodCell({ entry, onEdit, onDelete }) {
           {entry.teacher_name.split(" ").slice(-1)[0]}
         </p>
       )}
-      <p className={`text-[10px] leading-tight ${col.text} opacity-50`}>{entry.period_time}</p>
     </div>
   );
 }
@@ -115,22 +105,23 @@ function PeriodCell({ entry, onEdit, onDelete }) {
 // ADD / EDIT PERIOD MODAL
 // ─────────────────────────────────────────────
 
-const EMPTY_FORM = { teacher_id: "", subject: "", day: "Monday", period_time: "8:00 AM" };
+// FIX 1: EMPTY_FORM uses day_of_week
+const EMPTY_FORM = { teacher_id: "", subject: "", day_of_week: "Monday" };
 
 function PeriodModal({ initial, onClose, onSave, teachers, timetable, classId }) {
   const isEdit = !!initial?.id;
-  const [form, setForm]   = useState(
+
+  // FIX 2: form state uses day_of_week everywhere (maps from initial.day_of_week)
+  const [form, setForm] = useState(
     initial
       ? {
           teacher_id:  String(initial.teacher_id),
           subject:     initial.subject,
-          day:         initial.day,
-          period_time: initial.period_time,
+          day_of_week: initial.day_of_week || "Monday",
         }
       : {
           ...EMPTY_FORM,
-          day:         initial?.day         || "Monday",
-          period_time: initial?.period_time || "8:00 AM",
+          day_of_week: initial?.day_of_week || "Monday",
           teacher_id:  teachers[0] ? String(teachers[0].id) : "",
           subject:     teachers[0]?.subject || "",
         }
@@ -138,7 +129,6 @@ function PeriodModal({ initial, onClose, onSave, teachers, timetable, classId })
   const [error,   setError]   = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Auto-fill subject when teacher changes
   function handleTeacherChange(teacherId) {
     const teacher = teachers.find(t => String(t.id) === teacherId);
     setForm(prev => ({
@@ -149,20 +139,19 @@ function PeriodModal({ initial, onClose, onSave, teachers, timetable, classId })
     setError("");
   }
 
-  // Available subjects from selected teacher's subject_assignments
   const selectedTeacher = teachers.find(t => String(t.id) === form.teacher_id);
   const teacherSubjects = useMemo(() => {
     if (!selectedTeacher) return [];
     const assignments = selectedTeacher.subject_assignments || [];
     const subjects = assignments.map(a => a.subject).filter(Boolean);
-    // Also include primary subject
     if (selectedTeacher.subject && !subjects.includes(selectedTeacher.subject))
       subjects.unshift(selectedTeacher.subject);
     return subjects.length > 0 ? subjects : (selectedTeacher.subject ? [selectedTeacher.subject] : []);
   }, [selectedTeacher]);
 
   async function handleSave() {
-    if (!form.teacher_id || !form.subject || !form.day || !form.period_time)
+    // FIX 3: validate day_of_week not day
+    if (!form.teacher_id || !form.subject || !form.day_of_week)
       return setError("All fields are required.");
 
     setLoading(true);
@@ -170,9 +159,9 @@ function PeriodModal({ initial, onClose, onSave, teachers, timetable, classId })
     try {
       await onSave({
         ...form,
-        teacher_id:  parseInt(form.teacher_id, 10),
-        class_id:    classId,
-        id:          initial?.id,
+        teacher_id: parseInt(form.teacher_id, 10),
+        class_id:   classId,
+        id:         initial?.id,
       });
     } catch (err) {
       setError(err.message);
@@ -195,18 +184,20 @@ function PeriodModal({ initial, onClose, onSave, teachers, timetable, classId })
         </div>
 
         <div className="p-6 space-y-4">
-          {/* Day + Time */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Day</label>
-              <div className="relative">
-                <select value={form.day} onChange={e => { setForm(p => ({ ...p, day: e.target.value })); setError(""); }} className={selClass}>
-                  {DAYS.map(d => <option key={d}>{d}</option>)}
-                </select>
-                <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              </div>
+          {/* Day */}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Day</label>
+            <div className="relative">
+              {/* FIX 4: select binds to form.day_of_week */}
+              <select
+                value={form.day_of_week}
+                onChange={e => { setForm(p => ({ ...p, day_of_week: e.target.value })); setError(""); }}
+                className={selClass}
+              >
+                {DAYS.map(d => <option key={d}>{d}</option>)}
+              </select>
+              <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
-         
           </div>
 
           {/* Teacher */}
@@ -275,12 +266,10 @@ function PeriodModal({ initial, onClose, onSave, teachers, timetable, classId })
 // ─────────────────────────────────────────────
 
 export default function TimetablePage() {
-  // ── Data state
-  const [classes,   setClasses]   = useState([]);   // from /api/admin/classes
-  const [teachers,  setTeachers]  = useState([]);   // from /api/admin/teachers
-  const [timetable, setTimetable] = useState([]);   // from /api/admin/timetable?class_id=...
+  const [classes,   setClasses]   = useState([]);
+  const [teachers,  setTeachers]  = useState([]);
+  const [timetable, setTimetable] = useState([]);
 
-  // ── UI state
   const [activeClassId, setActiveClassId] = useState(null);
   const [viewMode,      setViewMode]      = useState("grid");
   const [modal,         setModal]         = useState(null);
@@ -288,7 +277,6 @@ export default function TimetablePage() {
   const [search,        setSearch]        = useState("");
   const [deleteConf,    setDeleteConf]    = useState(null);
 
-  // ── Loading state
   const [loadingClasses,   setLoadingClasses]   = useState(true);
   const [loadingTeachers,  setLoadingTeachers]  = useState(true);
   const [loadingTimetable, setLoadingTimetable] = useState(false);
@@ -298,7 +286,6 @@ export default function TimetablePage() {
     setTimeout(() => setToast(null), 3500);
   }
 
-  // ── Fetch classes on mount
   useEffect(() => {
     setLoadingClasses(true);
     apiFetch("/classes")
@@ -310,7 +297,6 @@ export default function TimetablePage() {
       .finally(() => setLoadingClasses(false));
   }, []);
 
-  // ── Fetch teachers on mount
   useEffect(() => {
     setLoadingTeachers(true);
     apiFetch("/teachers")
@@ -319,7 +305,6 @@ export default function TimetablePage() {
       .finally(() => setLoadingTeachers(false));
   }, []);
 
-  // ── Fetch timetable when class changes
   const fetchTimetable = useCallback(() => {
     if (!activeClassId) return;
     setLoadingTimetable(true);
@@ -331,70 +316,63 @@ export default function TimetablePage() {
 
   useEffect(() => { fetchTimetable(); }, [fetchTimetable]);
 
-  // ── Active class object
   const activeClass = classes.find(c => c.dbId === activeClassId);
   const classLabel  = activeClass ? `${activeClass.grade}-${activeClass.section}` : "";
 
-  // ── Stats
   const totalPeriods   = timetable.length;
   const uniqueSubjects = [...new Set(timetable.map(e => e.subject))].length;
   const uniqueTeachers = [...new Set(timetable.map(e => e.teacher_id))].length;
-  const freePeriods    = DAYS.length * PERIODS.length - totalPeriods;
+  // FIX 5: free slots is just DAYS minus scheduled (no period_time dimension)
+  const freePeriods    = DAYS.length - totalPeriods;
 
-  // ── Grid lookup: day → period_time → entry
+  // FIX 6: grid keyed by day_of_week only (no period_time)
   const grid = useMemo(() => {
     const map = {};
     timetable.forEach(e => {
-      if (!map[e.day]) map[e.day] = {};
-      map[e.day][e.period_time] = e;
+      map[e.day_of_week] = e;
     });
     return map;
   }, [timetable]);
 
-  // ── List view filtered
+  // FIX 7: list filter + sort uses day_of_week
   const listEntries = useMemo(() => {
     const q = search.toLowerCase();
     return timetable
       .filter(e =>
         e.subject.toLowerCase().includes(q) ||
-        e.day.toLowerCase().includes(q) ||
+        e.day_of_week.toLowerCase().includes(q) ||
         (e.teacher_name || "").toLowerCase().includes(q)
       )
-      .sort((a, b) => DAYS.indexOf(a.day) - DAYS.indexOf(b.day) || PERIODS.indexOf(a.period_time) - PERIODS.indexOf(b.period_time));
+      .sort((a, b) => DAYS.indexOf(a.day_of_week) - DAYS.indexOf(b.day_of_week));
   }, [timetable, search]);
 
-  // ── Save (create or update)
+  // FIX 8: handleSave sends day_of_week to backend
   async function handleSave(formData) {
     if (formData.id) {
-      // UPDATE
-      const updated = await apiFetch(`/timetable/${formData.id}`, {
+      await apiFetch(`/timetable/${formData.id}`, {
         method: "PUT",
         body: JSON.stringify({
           teacher_id:  formData.teacher_id,
           subject:     formData.subject,
-          day:         formData.day,
-          period_time: formData.period_time,
+          day_of_week: formData.day_of_week,
         }),
       });
-      setTimetable(prev => prev.map(e => e.id === updated.id ? { ...e, ...updated, teacher_name: teachers.find(t => t.dbId === updated.teacher_id)?.name || e.teacher_name } : e));
-      // Refetch to get teacher_name correctly
-      fetchTimetable();
-      setModal(null);
-      showToast("Period updated successfully");
     } else {
-      // CREATE
-      const created = await apiFetch("/timetable", {
+      await apiFetch("/timetable", {
         method: "POST",
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          class_id:    formData.class_id,
+          teacher_id:  formData.teacher_id,
+          subject:     formData.subject,
+          day_of_week: formData.day_of_week,
+        }),
       });
-      // Refetch to get full row with teacher_name join
-      fetchTimetable();
-      setModal(null);
-      showToast("Period added successfully");
     }
+    fetchTimetable();
+    setModal(null);
+    showToast(formData.id ? "Period updated successfully" : "Period added successfully");
   }
 
-  // ── Delete
   async function handleDelete(id) {
     try {
       await apiFetch(`/timetable/${id}`, { method: "DELETE" });
@@ -406,11 +384,11 @@ export default function TimetablePage() {
     }
   }
 
-  // ── Export CSV
+  // FIX 9: export CSV uses day_of_week
   function handleExport() {
     const rows = [
-      ["Class", "Day", "Period", "Subject", "Teacher"],
-      ...listEntries.map(e => [classLabel, e.day, e.period_time, e.subject, e.teacher_name || ""]),
+      ["Class", "Day", "Subject", "Teacher"],
+      ...listEntries.map(e => [classLabel, e.day_of_week, e.subject, e.teacher_name || ""]),
     ];
     const csv  = rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -422,17 +400,12 @@ export default function TimetablePage() {
 
   const todayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][new Date().getDay()];
 
-  // ── Teachers shaped for modal (need id as number)
   const teacherOptions = teachers.map(t => ({
     id:                  t.dbId,
     name:                t.name,
     subject:             t.subject,
     subject_assignments: t.subjectAssignments || [],
   }));
-
-  // ─────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────
 
   if (loadingClasses || loadingTeachers) {
     return (
@@ -483,7 +456,6 @@ export default function TimetablePage() {
         {/* ── Body ── */}
         <div className="flex-1 p-6 lg:p-8 space-y-6">
 
-          {/* Page heading */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Timetable</h1>
@@ -506,15 +478,14 @@ export default function TimetablePage() {
 
           {/* Summary cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <SummaryCard label="Total Periods"   value={totalPeriods}   icon={CalendarDays} accent="text-blue-600"    bg="bg-blue-50"    sub={`${classLabel} this week`}       />
-            <SummaryCard label="Subjects"        value={uniqueSubjects} icon={BookOpen}     accent="text-violet-600"  bg="bg-violet-50"  sub="Unique subjects scheduled"        />
-            <SummaryCard label="Teachers"        value={uniqueTeachers} icon={UserCog}      accent="text-emerald-600" bg="bg-emerald-50" sub="Assigned this week"               />
-            <SummaryCard label="Free Slots"      value={freePeriods}    icon={Clock}        accent="text-amber-600"   bg="bg-amber-50"   sub="Available for scheduling"         />
+            <SummaryCard label="Total Periods"   value={totalPeriods}   icon={CalendarDays} accent="text-blue-600"    bg="bg-blue-50"    sub={`${classLabel} this week`}      />
+            <SummaryCard label="Subjects"        value={uniqueSubjects} icon={BookOpen}     accent="text-violet-600"  bg="bg-violet-50"  sub="Unique subjects scheduled"       />
+            <SummaryCard label="Teachers"        value={uniqueTeachers} icon={UserCog}      accent="text-emerald-600" bg="bg-emerald-50" sub="Assigned this week"              />
+            <SummaryCard label="Free Days"       value={freePeriods}    icon={Clock}        accent="text-amber-600"   bg="bg-amber-50"   sub="Days without a period"          />
           </div>
 
-          {/* Controls: class tabs + view toggle */}
+          {/* Controls */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-            {/* Class tabs — from real DB */}
             <div className="flex gap-1.5 flex-wrap">
               {classes.length === 0 ? (
                 <p className="text-sm text-gray-400 py-1">No classes found. Add classes first.</p>
@@ -533,7 +504,6 @@ export default function TimetablePage() {
               )}
             </div>
 
-            {/* View toggle + today badge */}
             <div className="flex items-center gap-3">
               {DAYS.includes(todayName) && (
                 <span className="text-xs font-semibold bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-200">
@@ -551,7 +521,6 @@ export default function TimetablePage() {
             </div>
           </div>
 
-          {/* Loading overlay for timetable */}
           {loadingTimetable ? (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm flex items-center justify-center py-24">
               <div className="flex flex-col items-center gap-3 text-gray-400">
@@ -568,7 +537,6 @@ export default function TimetablePage() {
                     <table className="w-full min-w-[800px]">
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50/70">
-                          
                           {DAYS.map(day => (
                             <th key={day} className={`px-3 py-3.5 text-center text-[11px] font-bold uppercase tracking-wider w-36 ${
                               day === todayName ? "text-blue-600 bg-blue-50/50" : "text-gray-400"
@@ -578,30 +546,29 @@ export default function TimetablePage() {
                           ))}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {PERIODS.map(period => (
-                          <tr key={period} className="hover:bg-gray-50/30 transition-colors">
-                           
-                            {DAYS.map(day => (
-                              <td key={day} className={`px-2 py-2 ${day === todayName ? "bg-blue-50/20" : ""}`}>
-                                <div
-                                  onClick={() => {
-                                    if (!grid[day]?.[period]) {
-                                      setModal({ mode: "add", entry: { day, period_time: period } });
-                                    }
-                                  }}
-                                  className="cursor-pointer"
-                                >
-                                  <PeriodCell
-                                    entry={grid[day]?.[period] ?? null}
-                                    onEdit={entry => setModal({ mode: "edit", entry })}
-                                    onDelete={id => setDeleteConf(id)}
-                                  />
-                                </div>
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
+                      <tbody>
+                        {/* FIX 10: single row since there's no period_time — one cell per day */}
+                        <tr className="hover:bg-gray-50/30 transition-colors">
+                          {DAYS.map(day => (
+                            <td key={day} className={`px-2 py-2 ${day === todayName ? "bg-blue-50/20" : ""}`}>
+                              {/* FIX 11: grid[day] directly, pass day_of_week to modal */}
+                              <div
+                                onClick={() => {
+                                  if (!grid[day]) {
+                                    setModal({ mode: "add", entry: { day_of_week: day } });
+                                  }
+                                }}
+                                className="cursor-pointer"
+                              >
+                                <PeriodCell
+                                  entry={grid[day] ?? null}
+                                  onEdit={entry => setModal({ mode: "edit", entry })}
+                                  onDelete={id => setDeleteConf(id)}
+                                />
+                              </div>
+                            </td>
+                          ))}
+                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -626,21 +593,25 @@ export default function TimetablePage() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50/70">
-                         
+                          <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400">Day</th>
+                          <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400">Subject</th>
+                          <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400">Teacher</th>
+                          <th className="px-5 py-3" />
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
                         {listEntries.map(entry => {
                           const col     = getColor(entry.subject);
-                          const isToday = entry.day === todayName;
+                          // FIX 12: isToday uses day_of_week
+                          const isToday = entry.day_of_week === todayName;
                           return (
                             <tr key={entry.id} className={`hover:bg-blue-50/30 transition-colors group ${isToday ? "bg-blue-50/20" : ""}`}>
                               <td className="px-5 py-3.5">
+                                {/* FIX 13: display day_of_week */}
                                 <span className={`text-sm font-semibold ${isToday ? "text-blue-600" : "text-gray-700"}`}>
-                                  {isToday ? `★ ${entry.day}` : entry.day}
+                                  {isToday ? `★ ${entry.day_of_week}` : entry.day_of_week}
                                 </span>
                               </td>
-                              
                               <td className="px-5 py-3.5">
                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${col.bg} ${col.text} ${col.border}`}>
                                   <span className={`w-1.5 h-1.5 rounded-full ${col.dot}`} />{entry.subject}

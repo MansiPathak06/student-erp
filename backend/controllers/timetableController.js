@@ -12,8 +12,7 @@ const getTimetable = async (req, res) => {
          tt.class_id,
          tt.teacher_id,
          tt.subject,
-         tt.day,
-         tt.period_time,
+         tt.day_of_week,
          u.name        AS teacher_name,
          t.employee_id AS teacher_code,
          t.profile_picture
@@ -21,7 +20,7 @@ const getTimetable = async (req, res) => {
        JOIN teachers t ON tt.teacher_id = t.id
        JOIN users    u ON t.user_id     = u.id
        WHERE tt.class_id = $1
-       ORDER BY tt.day, tt.period_time`,
+       ORDER BY tt.day_of_week`,
       [class_id]
     );
     res.json(result.rows);
@@ -33,25 +32,24 @@ const getTimetable = async (req, res) => {
 
 // ── POST /api/admin/timetable
 const createPeriod = async (req, res) => {
-  const { class_id, teacher_id, subject, day, period_time } = req.body;
+  const { class_id, teacher_id, subject, day_of_week } = req.body;
 
-  if (!class_id || !teacher_id || !subject || !day || !period_time)
-    return res.status(400).json({ message: "class_id, teacher_id, subject, day, period_time are required" });
+  if (!class_id || !teacher_id || !subject || !day_of_week)
+    return res.status(400).json({ message: "class_id, teacher_id, subject, day_of_week are required" });
 
   try {
     const result = await pool.query(
-      `INSERT INTO timetable (class_id, teacher_id, subject, day, period_time)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO timetable (class_id, teacher_id, subject, day_of_week)
+       VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [class_id, teacher_id, subject, day, period_time]
+      [class_id, teacher_id, subject, day_of_week]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
     if (err.code === "23505") {
-      // Unique violation
       if (err.constraint?.includes("teacher"))
-        return res.status(409).json({ message: "This teacher already has a class at this time." });
-      return res.status(409).json({ message: "This class already has a period at this time." });
+        return res.status(409).json({ message: "This teacher already has a class on this day." });
+      return res.status(409).json({ message: "This class already has a period on this day." });
     }
     console.error("createPeriod:", err);
     res.status(500).json({ message: "Server error" });
@@ -61,19 +59,18 @@ const createPeriod = async (req, res) => {
 // ── PUT /api/admin/timetable/:id
 const updatePeriod = async (req, res) => {
   const { id } = req.params;
-  const { teacher_id, subject, day, period_time } = req.body;
+  const { teacher_id, subject, day_of_week } = req.body;
 
   try {
     const result = await pool.query(
       `UPDATE timetable
        SET teacher_id  = COALESCE($1, teacher_id),
            subject     = COALESCE($2, subject),
-           day         = COALESCE($3, day),
-           period_time = COALESCE($4, period_time),
+           day_of_week = COALESCE($3, day_of_week),
            updated_at  = NOW()
-       WHERE id = $5
+       WHERE id = $4
        RETURNING *`,
-      [teacher_id || null, subject || null, day || null, period_time || null, id]
+      [teacher_id || null, subject || null, day_of_week || null, id]
     );
     if (result.rows.length === 0)
       return res.status(404).json({ message: "Period not found" });
@@ -81,8 +78,8 @@ const updatePeriod = async (req, res) => {
   } catch (err) {
     if (err.code === "23505") {
       if (err.constraint?.includes("teacher"))
-        return res.status(409).json({ message: "This teacher already has a class at this time." });
-      return res.status(409).json({ message: "This class already has a period at this time." });
+        return res.status(409).json({ message: "This teacher already has a class on this day." });
+      return res.status(409).json({ message: "This class already has a period on this day." });
     }
     console.error("updatePeriod:", err);
     res.status(500).json({ message: "Server error" });

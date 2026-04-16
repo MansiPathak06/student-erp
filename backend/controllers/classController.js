@@ -142,6 +142,12 @@ const createClass = async (req, res) => {
 // GET /api/admin/teachers/check-class - Check if teacher already has a class
 const checkTeacherClassAssignment = async (req, res) => {
   const { teacherId, excludeClassId } = req.query;
+
+  // Add validation
+  if (!teacherId || isNaN(teacherId)) {
+    return res.status(400).json({ message: "Valid teacherId is required." });
+  }
+
   try {
     let query = `
       SELECT c.id, c.grade, c.section, u.name as teacher_name
@@ -150,11 +156,11 @@ const checkTeacherClassAssignment = async (req, res) => {
       JOIN users u ON t.user_id = u.id
       WHERE c.teacher_id = $1
     `;
-    let params = [teacherId];
+    let params = [parseInt(teacherId)]; // explicitly cast to integer
     
-    if (excludeClassId) {
+    if (excludeClassId && !isNaN(excludeClassId)) {
       query += ` AND c.id != $2`;
-      params.push(excludeClassId);
+      params.push(parseInt(excludeClassId)); // cast this too for safety
     }
     
     const result = await pool.query(query, params);
