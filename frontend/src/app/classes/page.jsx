@@ -43,10 +43,10 @@ const getToken = () => {
   return token;
 };
 
-const authHeaders = () => ({
-  "Content-Type": "application/json",
-  Authorization: `Bearer ${getToken()}`,
-});
+// const authHeaders = () => ({
+//   "Content-Type": "application/json",
+//   Authorization: `Bearer ${getToken()}`,
+// });
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
 const PALETTE = [
