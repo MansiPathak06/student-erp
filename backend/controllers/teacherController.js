@@ -369,13 +369,7 @@ const deleteTeacher = async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    // Remove teacher from any classes they're assigned to
-    await client.query(
-      "UPDATE classes SET teacher_id = NULL WHERE teacher_id = $1",
-      [id]
-    );
-
-    // Get user_id
+    // Get user_id first
     const teacherResult = await client.query(
       "SELECT user_id FROM teachers WHERE id = $1",
       [id]
@@ -387,19 +381,29 @@ const deleteTeacher = async (req, res) => {
     }
     
     const userId = teacherResult.rows[0].user_id;
-    
-    // Delete teacher
+
+    // Remove class teacher assignment
+    await client.query(
+      "UPDATE classes SET teacher_id = NULL WHERE teacher_id = $1", [id]
+    );
+
+    // Delete subject assignments
+    await client.query(
+      "DELETE FROM teacher_subjects WHERE teacher_id = $1", [id]
+    );
+
+    // Delete teacher record
     await client.query("DELETE FROM teachers WHERE id = $1", [id]);
     
-    // Delete user
+    // Delete user record
     await client.query("DELETE FROM users WHERE id = $1", [userId]);
     
     await client.query("COMMIT");
     res.json({ message: "Teacher deleted successfully" });
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error("deleteTeacher:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("deleteTeacher error:", err.message); // ← check your terminal for this
+    res.status(500).json({ message: err.message });
   } finally {
     client.release();
   }

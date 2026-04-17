@@ -758,7 +758,7 @@ function EditTeacherModal({ teacher, onClose, onSaved, subjectsList, classesMeta
         fd.append("password", form.password);
       }
 
-      const res = await fetch(`/api/admin/teachers/${form.employeeId}`, {
+      const res = await fetch(`/api/admin/teachers/${form.id}`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
@@ -1381,11 +1381,13 @@ const handleEdit = (teacher) => {
   setShowEditModal(true);
 };
 
-  const handleDelete = async (id) => {
+const handleDelete = async (id) => {
     if (!confirm("Delete this teacher?")) return;
     const token = getToken();
     try {
-      await fetch(`/api/admin/teachers/${id}`, {
+      const teacher = teachers.find(t => t.id === id);
+      const dbId = teacher?.dbId;
+      await fetch(`/api/admin/teachers/${dbId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
