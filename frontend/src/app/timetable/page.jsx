@@ -15,6 +15,7 @@ import {
 const API_BASE = "http://localhost:5000/api/admin";
 
 const DAYS    = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const PERIODS = Array.from({ length: 7 }, (_, i) => i + 1); // [1,2,3,4,5,6,7]
 
 const SUBJECT_COLORS = {
   "Physics":        { bg: "bg-blue-50",    text: "text-blue-700",    border: "border-blue-200",    dot: "bg-blue-500"    },
@@ -62,8 +63,8 @@ function Toast({ message, type, onClose }) {
   );
 }
 
-function SummaryCard({ label, value, icon: Icon, accent, bg, sub }) {
-  return (
+function SummaryCard({ label, value, icon: Icon, accent, bg, sub, tooltipContent }) {
+  const card = (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col gap-3 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{label}</p>
@@ -73,6 +74,23 @@ function SummaryCard({ label, value, icon: Icon, accent, bg, sub }) {
       <p className="text-xs text-gray-400">{sub}</p>
     </div>
   );
+  if (tooltipContent && tooltipContent.length > 0) {
+    return (
+      <div className="relative group">
+        {card}
+        <div className="absolute top-full mt-1 right-0 bg-white border rounded-lg shadow-lg p-2 hidden group-hover:block z-10 w-48">
+          <p className="text-xs font-semibold text-gray-500 mb-1">All Teachers</p>
+          {tooltipContent.map(t => (
+            <div key={t.teacherId} className="flex justify-between text-xs py-0.5">
+              <span className="truncate max-w-[120px]">{t.teacherName}</span>
+              <span className="font-mono">{t.freeDays} free</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return card;
 }
 
 function PeriodCell({ entry, onEdit, onDelete }) {
@@ -102,28 +120,28 @@ function PeriodCell({ entry, onEdit, onDelete }) {
 }
 
 // ─────────────────────────────────────────────
-// ADD / EDIT PERIOD MODAL
+// ADD / EDIT PERIOD MODAL (with period_number)
 // ─────────────────────────────────────────────
 
-// FIX 1: EMPTY_FORM uses day_of_week
-const EMPTY_FORM = { teacher_id: "", subject: "", day_of_week: "Monday" };
+const EMPTY_FORM = { teacher_id: "", subject: "", day_of_week: "Monday", period_number: 1 };
 
-function PeriodModal({ initial, onClose, onSave, teachers, timetable, classId }) {
+function PeriodModal({ initial, onClose, onSave, teachers, classId }) {
   const isEdit = !!initial?.id;
 
-  // FIX 2: form state uses day_of_week everywhere (maps from initial.day_of_week)
   const [form, setForm] = useState(
     initial
       ? {
-          teacher_id:  String(initial.teacher_id),
-          subject:     initial.subject,
-          day_of_week: initial.day_of_week || "Monday",
+          teacher_id:    String(initial.teacher_id),
+          subject:       initial.subject,
+          day_of_week:   initial.day_of_week,
+          period_number: Number(initial.period_number) || 1,
         }
       : {
           ...EMPTY_FORM,
-          day_of_week: initial?.day_of_week || "Monday",
-          teacher_id:  teachers[0] ? String(teachers[0].id) : "",
-          subject:     teachers[0]?.subject || "",
+          day_of_week:   initial?.day_of_week || "Monday",
+          period_number: initial?.period_number ? Number(initial.period_number) : 1,
+          teacher_id:    teachers[0] ? String(teachers[0].id) : "",
+          subject:       teachers[0]?.subject || "",
         }
   );
   const [error,   setError]   = useState("");
@@ -150,8 +168,7 @@ function PeriodModal({ initial, onClose, onSave, teachers, timetable, classId })
   }, [selectedTeacher]);
 
   async function handleSave() {
-    // FIX 3: validate day_of_week not day
-    if (!form.teacher_id || !form.subject || !form.day_of_week)
+    if (!form.teacher_id || !form.subject || !form.day_of_week || !form.period_number)
       return setError("All fields are required.");
 
     setLoading(true);
@@ -159,9 +176,10 @@ function PeriodModal({ initial, onClose, onSave, teachers, timetable, classId })
     try {
       await onSave({
         ...form,
-        teacher_id: parseInt(form.teacher_id, 10),
-        class_id:   classId,
-        id:         initial?.id,
+        teacher_id:    parseInt(form.teacher_id, 10),
+        period_number: parseInt(form.period_number, 10),
+        class_id:      classId,
+        id:            initial?.id,
       });
     } catch (err) {
       setError(err.message);
@@ -188,13 +206,27 @@ function PeriodModal({ initial, onClose, onSave, teachers, timetable, classId })
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Day</label>
             <div className="relative">
-              {/* FIX 4: select binds to form.day_of_week */}
               <select
                 value={form.day_of_week}
                 onChange={e => { setForm(p => ({ ...p, day_of_week: e.target.value })); setError(""); }}
                 className={selClass}
               >
                 {DAYS.map(d => <option key={d}>{d}</option>)}
+              </select>
+              <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Period Number */}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Period No.</label>
+            <div className="relative">
+              <select
+                value={form.period_number}
+                onChange={e => { setForm(p => ({ ...p, period_number: parseInt(e.target.value) })); setError(""); }}
+                className={selClass}
+              >
+                {PERIODS.map(p => <option key={p} value={p}>Period {p}</option>)}
               </select>
               <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
@@ -281,6 +313,10 @@ export default function TimetablePage() {
   const [loadingTeachers,  setLoadingTeachers]  = useState(true);
   const [loadingTimetable, setLoadingTimetable] = useState(false);
 
+  // Dynamic teacher free periods (based on total assigned periods)
+  const [teacherFreeDaysList, setTeacherFreeDaysList] = useState([]);
+  const [teacherWithMostFreeDays, setTeacherWithMostFreeDays] = useState(null);
+
   function showToast(message, type = "success") {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
@@ -316,25 +352,63 @@ export default function TimetablePage() {
 
   useEffect(() => { fetchTimetable(); }, [fetchTimetable]);
 
+  // Calculate teacher free periods (free = 42 - assigned periods)
+  useEffect(() => {
+    if (!timetable.length || !teachers.length) {
+      setTeacherFreeDaysList([]);
+      setTeacherWithMostFreeDays(null);
+      return;
+    }
+
+    const totalPossiblePeriods = DAYS.length * PERIODS.length; // 42
+    const teacherPeriodCount = {};
+    timetable.forEach(entry => {
+      const tid = entry.teacher_id;
+      teacherPeriodCount[tid] = (teacherPeriodCount[tid] || 0) + 1;
+    });
+
+    const freePeriodsData = teachers.map(teacher => {
+      const assignedPeriods = teacherPeriodCount[teacher.id] || 0;
+      const freePeriods = totalPossiblePeriods - assignedPeriods;
+      return {
+        teacherId: teacher.id,
+        teacherName: teacher.name,
+        freeDays: freePeriods,
+      };
+    });
+
+    setTeacherFreeDaysList(freePeriodsData);
+    const maxFree = freePeriodsData.reduce((max, curr) => 
+      curr.freeDays > max.freeDays ? curr : max, 
+      { freeDays: -1, teacherName: "", teacherId: null }
+    );
+    setTeacherWithMostFreeDays(maxFree.freeDays >= 0 ? maxFree : null);
+  }, [timetable, teachers]);
+
   const activeClass = classes.find(c => c.dbId === activeClassId);
   const classLabel  = activeClass ? `${activeClass.grade}-${activeClass.section}` : "";
 
   const totalPeriods   = timetable.length;
   const uniqueSubjects = [...new Set(timetable.map(e => e.subject))].length;
   const uniqueTeachers = [...new Set(timetable.map(e => e.teacher_id))].length;
-  // FIX 5: free slots is just DAYS minus scheduled (no period_time dimension)
-  const freePeriods    = DAYS.length - totalPeriods;
 
-  // FIX 6: grid keyed by day_of_week only (no period_time)
+  // Build 2D grid: grid[day][periodNumber] = entry
+  // 🔧 FIX: ensure period_number is converted to number for correct lookup
   const grid = useMemo(() => {
     const map = {};
-    timetable.forEach(e => {
-      map[e.day_of_week] = e;
+    DAYS.forEach(day => { map[day] = {}; });
+    timetable.forEach(entry => {
+      if (entry.day_of_week && entry.period_number !== undefined) {
+        const periodNum = Number(entry.period_number);
+        if (!isNaN(periodNum) && periodNum >= 1 && periodNum <= 7) {
+          map[entry.day_of_week][periodNum] = entry;
+        }
+      }
     });
     return map;
   }, [timetable]);
 
-  // FIX 7: list filter + sort uses day_of_week
+  // List view (flat list with day and period)
   const listEntries = useMemo(() => {
     const q = search.toLowerCase();
     return timetable
@@ -343,28 +417,44 @@ export default function TimetablePage() {
         e.day_of_week.toLowerCase().includes(q) ||
         (e.teacher_name || "").toLowerCase().includes(q)
       )
-      .sort((a, b) => DAYS.indexOf(a.day_of_week) - DAYS.indexOf(b.day_of_week));
+      .sort((a, b) => {
+        const dayDiff = DAYS.indexOf(a.day_of_week) - DAYS.indexOf(b.day_of_week);
+        if (dayDiff !== 0) return dayDiff;
+        return (Number(a.period_number) || 0) - (Number(b.period_number) || 0);
+      });
   }, [timetable, search]);
 
-  // FIX 8: handleSave sends day_of_week to backend
   async function handleSave(formData) {
+    const normalizedPeriod = Number(formData.period_number);
+    const classSlotConflict = timetable.find(entry =>
+      entry.id !== formData.id &&
+      entry.day_of_week === formData.day_of_week &&
+      Number(entry.period_number) === normalizedPeriod
+    );
+
+    if (classSlotConflict) {
+      throw new Error(`Period P${normalizedPeriod} is already assigned on ${formData.day_of_week}.`);
+    }
+
     if (formData.id) {
       await apiFetch(`/timetable/${formData.id}`, {
         method: "PUT",
         body: JSON.stringify({
-          teacher_id:  formData.teacher_id,
-          subject:     formData.subject,
-          day_of_week: formData.day_of_week,
+          teacher_id:    formData.teacher_id,
+          subject:       formData.subject,
+          day_of_week:   formData.day_of_week,
+          period_number: formData.period_number,
         }),
       });
     } else {
       await apiFetch("/timetable", {
         method: "POST",
         body: JSON.stringify({
-          class_id:    formData.class_id,
-          teacher_id:  formData.teacher_id,
-          subject:     formData.subject,
-          day_of_week: formData.day_of_week,
+          class_id:      formData.class_id,
+          teacher_id:    formData.teacher_id,
+          subject:       formData.subject,
+          day_of_week:   formData.day_of_week,
+          period_number: formData.period_number,
         }),
       });
     }
@@ -384,11 +474,10 @@ export default function TimetablePage() {
     }
   }
 
-  // FIX 9: export CSV uses day_of_week
   function handleExport() {
     const rows = [
-      ["Class", "Day", "Subject", "Teacher"],
-      ...listEntries.map(e => [classLabel, e.day_of_week, e.subject, e.teacher_name || ""]),
+      ["Class", "Day", "Period", "Subject", "Teacher"],
+      ...listEntries.map(e => [classLabel, e.day_of_week, e.period_number, e.subject, e.teacher_name || ""]),
     ];
     const csv  = rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -427,7 +516,7 @@ export default function TimetablePage() {
 
       <main className="flex-1 min-w-0 flex flex-col">
 
-        {/* ── Top bar ── */}
+        {/* Top bar */}
         <header className="sticky top-0 z-30 bg-white/80 backdrop-blur border-b border-gray-100
                            flex items-center justify-between gap-4 px-6 py-3.5 shadow-sm">
           <div className="flex items-center gap-2 bg-gray-100 rounded-xl px-3 py-2 w-64 max-w-full ml-10 lg:ml-0">
@@ -453,13 +542,13 @@ export default function TimetablePage() {
           </div>
         </header>
 
-        {/* ── Body ── */}
+        {/* Body */}
         <div className="flex-1 p-6 lg:p-8 space-y-6">
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Timetable</h1>
-              <p className="text-sm text-gray-500 mt-0.5">Manage weekly class schedules · {classes.length} classes loaded</p>
+              <p className="text-sm text-gray-500 mt-0.5">42 slots (6 days × 7 periods) · {classes.length} classes</p>
             </div>
             <div className="flex items-center gap-3">
               <button onClick={handleExport}
@@ -476,12 +565,20 @@ export default function TimetablePage() {
             </div>
           </div>
 
-          {/* Summary cards */}
+          {/* Summary Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <SummaryCard label="Total Periods"   value={totalPeriods}   icon={CalendarDays} accent="text-blue-600"    bg="bg-blue-50"    sub={`${classLabel} this week`}      />
-            <SummaryCard label="Subjects"        value={uniqueSubjects} icon={BookOpen}     accent="text-violet-600"  bg="bg-violet-50"  sub="Unique subjects scheduled"       />
-            <SummaryCard label="Teachers"        value={uniqueTeachers} icon={UserCog}      accent="text-emerald-600" bg="bg-emerald-50" sub="Assigned this week"              />
-            <SummaryCard label="Free Days"       value={freePeriods}    icon={Clock}        accent="text-amber-600"   bg="bg-amber-50"   sub="Days without a period"          />
+            <SummaryCard label="Total Periods"   value={totalPeriods}   icon={CalendarDays} accent="text-blue-600"    bg="bg-blue-50"    sub={`out of 42 slots`}      />
+            <SummaryCard label="Subjects"        value={uniqueSubjects} icon={BookOpen}     accent="text-violet-600"  bg="bg-violet-50"  sub="Unique subjects"       />
+            <SummaryCard label="Teachers"        value={uniqueTeachers} icon={UserCog}      accent="text-emerald-600"  bg="bg-emerald-50"  sub="Assigned"              />
+            <SummaryCard 
+              label="Most Free Periods (Teacher)" 
+              value={teacherWithMostFreeDays ? `${teacherWithMostFreeDays.freeDays} free` : "—"} 
+              icon={Clock} 
+              accent="text-amber-600" 
+              bg="bg-amber-50" 
+              sub={teacherWithMostFreeDays ? teacherWithMostFreeDays.teacherName : "No teachers"}
+              tooltipContent={teacherFreeDaysList.length > 0 ? teacherFreeDaysList : null}
+            />
           </div>
 
           {/* Controls */}
@@ -530,13 +627,14 @@ export default function TimetablePage() {
             </div>
           ) : (
             <>
-              {/* ── GRID VIEW ── */}
+              {/* GRID VIEW - 42 cells (7 periods x 6 days) */}
               {viewMode === "grid" && (
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[800px]">
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50/70">
+                          <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400 w-20">Period</th>
                           {DAYS.map(day => (
                             <th key={day} className={`px-3 py-3.5 text-center text-[11px] font-bold uppercase tracking-wider w-36 ${
                               day === todayName ? "text-blue-600 bg-blue-50/50" : "text-gray-400"
@@ -547,28 +645,35 @@ export default function TimetablePage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {/* FIX 10: single row since there's no period_time — one cell per day */}
-                        <tr className="hover:bg-gray-50/30 transition-colors">
-                          {DAYS.map(day => (
-                            <td key={day} className={`px-2 py-2 ${day === todayName ? "bg-blue-50/20" : ""}`}>
-                              {/* FIX 11: grid[day] directly, pass day_of_week to modal */}
-                              <div
-                                onClick={() => {
-                                  if (!grid[day]) {
-                                    setModal({ mode: "add", entry: { day_of_week: day } });
-                                  }
-                                }}
-                                className="cursor-pointer"
-                              >
-                                <PeriodCell
-                                  entry={grid[day] ?? null}
-                                  onEdit={entry => setModal({ mode: "edit", entry })}
-                                  onDelete={id => setDeleteConf(id)}
-                                />
-                              </div>
+                        {PERIODS.map(period => (
+                          <tr key={period} className="hover:bg-gray-50/30 transition-colors">
+                            <td className="px-3 py-2 text-center text-xs font-semibold text-gray-500 bg-gray-50/50 border-r border-gray-100">
+                              P{period}
                             </td>
-                          ))}
-                        </tr>
+                            {DAYS.map(day => {
+                              const entry = grid[day]?.[period]; // period is number, grid uses number keys
+                              const isToday = day === todayName;
+                              return (
+                                <td key={`${day}-${period}`} className={`px-2 py-2 ${isToday ? "bg-blue-50/20" : ""}`}>
+                                  <div
+                                    onClick={() => {
+                                      if (!entry) {
+                                        setModal({ mode: "add", entry: { day_of_week: day, period_number: period } });
+                                      }
+                                    }}
+                                    className="cursor-pointer"
+                                  >
+                                    <PeriodCell
+                                      entry={entry ?? null}
+                                      onEdit={entry => setModal({ mode: "edit", entry })}
+                                      onDelete={id => setDeleteConf(id)}
+                                    />
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
@@ -586,7 +691,7 @@ export default function TimetablePage() {
                 </div>
               )}
 
-              {/* ── LIST VIEW ── */}
+              {/* LIST VIEW */}
               {viewMode === "list" && (
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                   <div className="overflow-x-auto">
@@ -594,6 +699,7 @@ export default function TimetablePage() {
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50/70">
                           <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400">Day</th>
+                          <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400">Period</th>
                           <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400">Subject</th>
                           <th className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400">Teacher</th>
                           <th className="px-5 py-3" />
@@ -601,16 +707,17 @@ export default function TimetablePage() {
                       </thead>
                       <tbody className="divide-y divide-gray-50">
                         {listEntries.map(entry => {
-                          const col     = getColor(entry.subject);
-                          // FIX 12: isToday uses day_of_week
+                          const col = getColor(entry.subject);
                           const isToday = entry.day_of_week === todayName;
                           return (
                             <tr key={entry.id} className={`hover:bg-blue-50/30 transition-colors group ${isToday ? "bg-blue-50/20" : ""}`}>
                               <td className="px-5 py-3.5">
-                                {/* FIX 13: display day_of_week */}
                                 <span className={`text-sm font-semibold ${isToday ? "text-blue-600" : "text-gray-700"}`}>
                                   {isToday ? `★ ${entry.day_of_week}` : entry.day_of_week}
                                 </span>
+                              </td>
+                              <td className="px-5 py-3.5">
+                                <span className="text-xs font-mono text-gray-500">P{entry.period_number}</span>
                               </td>
                               <td className="px-5 py-3.5">
                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${col.bg} ${col.text} ${col.border}`}>
@@ -624,7 +731,7 @@ export default function TimetablePage() {
                                   </div>
                                   <span className="text-sm text-gray-700">{entry.teacher_name || "—"}</span>
                                 </div>
-                              </td>
+                               </td>
                               <td className="px-5 py-3.5">
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button onClick={() => setModal({ mode: "edit", entry })}
@@ -632,7 +739,7 @@ export default function TimetablePage() {
                                   <button onClick={() => setDeleteConf(entry.id)}
                                     className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={14} /></button>
                                 </div>
-                              </td>
+                               </td>
                             </tr>
                           );
                         })}
@@ -654,7 +761,7 @@ export default function TimetablePage() {
                   {listEntries.length > 0 && (
                     <div className="px-5 py-3.5 border-t border-gray-100">
                       <p className="text-xs text-gray-400">
-                        <span className="font-semibold text-gray-600">{listEntries.length}</span> periods scheduled for {classLabel}
+                        <span className="font-semibold text-gray-600">{listEntries.length}</span> periods scheduled out of 42
                       </p>
                     </div>
                   )}
@@ -665,19 +772,18 @@ export default function TimetablePage() {
         </div>
       </main>
 
-      {/* ── Add / Edit Modal ── */}
+      {/* Add / Edit Modal */}
       {modal && (
         <PeriodModal
           initial={modal.entry}
           onClose={() => setModal(null)}
           onSave={handleSave}
           teachers={teacherOptions}
-          timetable={timetable}
           classId={activeClassId}
         />
       )}
 
-      {/* ── Delete Confirmation ── */}
+      {/* Delete Confirmation */}
       {deleteConf && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
