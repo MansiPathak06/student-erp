@@ -69,6 +69,16 @@ export default function Sidebar() {
 
   const closeMobile = () => setMobileOpen(false);
 
+
+  const handleLogout = () => {
+  localStorage.removeItem("token"); // remove JWT
+
+  // clear cookie (if you are using it)
+  document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
+
+  window.location.href = "/login"; // redirect
+};
+
   return (
     <>
       {/* ── Mobile hamburger button ── */}
@@ -214,7 +224,7 @@ export default function Sidebar() {
 
           {/* Logout */}
           <button
-            onClick={closeMobile}
+            onClick={handleLogout}
             className={`
               group flex items-center gap-3 w-full px-3 py-2.5 rounded-xl
               text-blue-100 hover:bg-red-500/25 hover:text-red-200
