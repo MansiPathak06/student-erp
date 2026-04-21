@@ -25,16 +25,14 @@ const NAV_SECTIONS = [
   {
     heading: "Academic",
     items: [
-      
-      { icon: BarChart3,     label: "Results",     href: "/results" },
-      { icon: ClipboardList, label: "Assignments", href: "/assignments" },
+      { icon: ClipboardList, label: "Notices", href: "/notices" },
     ],
   },
   {
     heading: "Finance",
     items: [
       { icon: CreditCard, label: "Fees",     href: "/fees" },
-      { icon: Wallet,     label: "Payments", href: "/payments" },
+     
     ],
   },
   {

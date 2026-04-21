@@ -564,6 +564,100 @@ const checkTeacherAlreadyClassTeacher = async (client, teacherId, excludeClassId
   return result.rows[0] || null;
 };
 
+
+const getTimetable = async (req, res) => {
+  try {
+    const teacherResult = await pool.query(
+      "SELECT id FROM teachers WHERE user_id = $1",
+      [req.user.id]
+    );
+    if (!teacherResult.rows.length) {
+      return res.status(404).json({ message: "Teacher not found" });
+    }
+    const teacherId = teacherResult.rows[0].id;
+
+    const result = await pool.query(
+      `SELECT
+         tt.id,
+         tt.day_of_week  AS day,
+         tt.start_time,
+         tt.end_time,
+         tt.subject,
+         c.grade         AS class_name,
+         c.section
+       FROM timetable tt
+       LEFT JOIN classes c ON c.id = tt.class_id
+       WHERE tt.teacher_id = $1
+       ORDER BY
+         CASE tt.day_of_week
+           WHEN 'Monday'    THEN 1
+           WHEN 'Tuesday'   THEN 2
+           WHEN 'Wednesday' THEN 3
+           WHEN 'Thursday'  THEN 4
+           WHEN 'Friday'    THEN 5
+           WHEN 'Saturday'  THEN 6
+           ELSE 7
+         END,
+         tt.start_time`,
+      [teacherId]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("getTimetable:", err.message);
+    res.status(500).json({ message: err.message });
+  }
+};
+ 
+// ── Teacher: PUT /api/teacher/fees/:studentId ─────────────────────────────────
+// Allows a class teacher to update a student's fee status
+const updateStudentFee = async (req, res) => {
+  const { studentId } = req.params;
+  const { fee_status } = req.body;
+ 
+  const VALID = ["Paid", "Pending", "Overdue"];
+  if (!VALID.includes(fee_status)) {
+    return res.status(400).json({ message: "fee_status must be Paid, Pending, or Overdue" });
+  }
+ 
+  try {
+    // Verify the teacher is actually the class teacher for this student's class
+    const teacherResult = await pool.query(
+      "SELECT id FROM teachers WHERE user_id = $1",
+      [req.user.id]
+    );
+    if (!teacherResult.rows.length) {
+      return res.status(404).json({ message: "Teacher not found" });
+    }
+    const teacherId = teacherResult.rows[0].id;
+ 
+    // Check teacher has this student in one of their classes
+    const studentCheck = await pool.query(
+      `SELECT s.id
+       FROM students s
+       JOIN classes c ON c.id = s.class_id
+       WHERE s.id = $1 AND c.teacher_id = $2
+       LIMIT 1`,
+      [studentId, teacherId]
+    );
+ 
+    if (!studentCheck.rows.length) {
+      return res.status(403).json({ message: "You do not have permission to update this student's fee." });
+    }
+ 
+    const result = await pool.query(
+      "UPDATE students SET fee_status = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+      [fee_status, studentId]
+    );
+ 
+    res.json({ message: "Fee status updated", student: result.rows[0] });
+  } catch (err) {
+    console.error("updateStudentFee:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+ 
+
 module.exports = {
   getAllTeachers,
   getTeacherMeta,
@@ -577,4 +671,6 @@ module.exports = {
   addResult,
     updateTeacher, 
     checkTeacherAlreadyClassTeacher,
+    getTimetable,
+    updateStudentFee
 };
