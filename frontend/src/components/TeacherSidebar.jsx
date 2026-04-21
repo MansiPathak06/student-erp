@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import {
   LayoutDashboard, User, CalendarDays,
   Users, CreditCard, LogOut, X, Menu,
-  ChevronLeft, BookOpen,
+  ChevronLeft, BookOpen, Bell,
 } from "lucide-react";
 import SidebarItem from "@/components/SidebarItem";
 
@@ -16,6 +16,7 @@ const TEACHER_NAV = [
       { icon: User,            label: "My Profile",  href: "/teachers/profile"   },
       { icon: CalendarDays,    label: "My Lectures", href: "/teachers/lectures"  },
       { icon: Users,           label: "My Class",    href: "/teachers/class"     },
+      { icon: Bell,            label: "Notices",     href: "/teachers/notices"    },
     ],
   },
   {
@@ -52,7 +53,6 @@ export default function TeacherSidebar() {
 
   return (
     <>
-      {/* Mobile hamburger */}
       <button
         onClick={() => setMobileOpen(true)}
         className="fixed top-4 left-4 z-40 lg:hidden p-2.5 bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-900/30 hover:bg-emerald-700 active:scale-95 transition-all"
@@ -61,15 +61,10 @@ export default function TeacherSidebar() {
         <Menu size={20} />
       </button>
 
-      {/* Mobile backdrop */}
       {mobileOpen && (
-        <div
-          onClick={closeMobile}
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden"
-        />
+        <div onClick={closeMobile} className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden" />
       )}
 
-      {/* Sidebar panel */}
       <aside
         className={`
           fixed top-0 left-0 z-50 h-full flex flex-col
@@ -84,7 +79,6 @@ export default function TeacherSidebar() {
         role="navigation"
         aria-label="Teacher navigation"
       >
-        {/* Header */}
         <div className={`relative flex items-center px-4 py-5 border-b border-white/10 ${collapsed ? "justify-center lg:px-2" : "justify-between"}`}>
           <div className={`flex items-center gap-3 ${collapsed ? "lg:gap-0" : ""}`}>
             <div className="flex-shrink-0 w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center ring-1 ring-white/30 shadow-inner">
@@ -97,23 +91,16 @@ export default function TeacherSidebar() {
               </div>
             )}
           </div>
-
           <button onClick={closeMobile} className="lg:hidden text-emerald-200 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors" aria-label="Close sidebar">
             <X size={18} />
           </button>
-
           {!collapsed && (
-            <button
-              onClick={() => setCollapsed(true)}
-              className="hidden lg:flex items-center justify-center w-7 h-7 rounded-lg text-emerald-200 hover:text-white hover:bg-white/15 transition-all"
-              aria-label="Collapse sidebar"
-            >
+            <button onClick={() => setCollapsed(true)} className="hidden lg:flex items-center justify-center w-7 h-7 rounded-lg text-emerald-200 hover:text-white hover:bg-white/15 transition-all" aria-label="Collapse sidebar">
               <ChevronLeft size={16} />
             </button>
           )}
         </div>
 
-        {/* Nav */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-3 space-y-1">
           {TEACHER_NAV.map((section) => (
             <div key={section.heading} className="mb-2">
@@ -132,14 +119,9 @@ export default function TeacherSidebar() {
           ))}
         </nav>
 
-        {/* Footer */}
         <div className="px-3 py-4 border-t border-white/10 space-y-1">
           {collapsed && (
-            <button
-              onClick={() => setCollapsed(false)}
-              className="hidden lg:flex w-full items-center justify-center p-2.5 rounded-xl text-emerald-200 hover:text-white hover:bg-white/15 transition-all"
-              aria-label="Expand sidebar"
-            >
+            <button onClick={() => setCollapsed(false)} className="hidden lg:flex w-full items-center justify-center p-2.5 rounded-xl text-emerald-200 hover:text-white hover:bg-white/15 transition-all" aria-label="Expand sidebar">
               <ChevronLeft size={18} className="rotate-180" />
             </button>
           )}
@@ -154,7 +136,6 @@ export default function TeacherSidebar() {
         </div>
       </aside>
 
-      {/* Desktop spacer */}
       <div className={`hidden lg:block flex-shrink-0 transition-all duration-300 ${collapsed ? "w-[72px]" : "w-64"}`} />
     </>
   );

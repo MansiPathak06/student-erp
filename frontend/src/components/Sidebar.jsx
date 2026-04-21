@@ -25,7 +25,7 @@ const NAV_SECTIONS = [
   {
     heading: "Academic",
     items: [
-      { icon: ClipboardList, label: "Notices", href: "/notices" },
+      { icon: ClipboardList, label: "Notices", href: "/admin/notices" },
     ],
   },
   {

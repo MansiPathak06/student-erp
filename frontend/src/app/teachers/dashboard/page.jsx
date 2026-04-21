@@ -4,10 +4,10 @@ import { useState, useEffect, useCallback } from "react";
 import TeacherSidebar from "@/components/TeacherSidebar";
 import {
   BookOpen, Users, CalendarDays, GraduationCap,
-  User, Phone, Mail, Clock,
+  Phone, Mail, Bell, Pin, AlertCircle,
 } from "lucide-react";
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
 const getToken = () => {
   if (typeof window === "undefined") return null;
   const m = document.cookie.match(/(^| )token=([^;]+)/);
@@ -30,7 +30,7 @@ function getInitials(name = "") {
 
 const DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
-// ── sub-components ────────────────────────────────────────────────────────────
+// ── Shared UI ─────────────────────────────────────────────────────────────────
 function StatCard({ icon: Icon, label, value, color, bg }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
@@ -49,7 +49,154 @@ function Skeleton({ h = "h-20" }) {
   return <div className={`${h} bg-gray-100 rounded-2xl animate-pulse`} />;
 }
 
-// ── page ──────────────────────────────────────────────────────────────────────
+// ── NoticesSection ────────────────────────────────────────────────────────────
+const CATEGORY_STYLE = {
+  General:  { bg: "bg-gray-100",   text: "text-gray-600"    },
+  Academic: { bg: "bg-blue-50",    text: "text-blue-700"    },
+  Exam:     { bg: "bg-violet-50",  text: "text-violet-700"  },
+  Holiday:  { bg: "bg-emerald-50", text: "text-emerald-700" },
+  Event:    { bg: "bg-amber-50",   text: "text-amber-700"   },
+  Urgent:   { bg: "bg-red-50",     text: "text-red-700"     },
+};
+
+function NoticesSection() {
+  const [data,     setData]     = useState(null);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState("");
+  const [expanded, setExpanded] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await apiFetch("/notices");   // → GET /api/teacher/notices
+      setData(res || []);
+    } catch {
+      setError("Failed to load notices");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
+        <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+          <Bell size={15} className="text-amber-600" />
+        </div>
+        <h2 className="font-bold text-gray-900 text-sm">Notices</h2>
+        {data && data.length > 0 && (
+          <span className="ml-auto text-xs bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded-full">
+            {data.length}
+          </span>
+        )}
+      </div>
+
+      {/* Body */}
+      <div className="p-4">
+        {loading ? (
+          <div className="space-y-2"><Skeleton h="h-14" /><Skeleton h="h-14" /></div>
+        ) : error ? (
+          <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl flex items-center justify-between">
+            {error}
+            <button onClick={load} className="text-red-700 font-semibold hover:underline text-xs ml-4">Retry</button>
+          </div>
+        ) : !data || data.length === 0 ? (
+          <div className="text-center py-8 text-gray-400">
+            <Bell size={24} className="mx-auto mb-2 opacity-40" />
+            <p className="text-sm">No notices for you right now</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {data.map(n => {
+              const cat     = CATEGORY_STYLE[n.category] ?? CATEGORY_STYLE.General;
+              const isOpen  = expanded === n.id;
+              const isUrgent = n.priority === "Urgent";
+
+              return (
+                <div
+                  key={n.id}
+                  className={`rounded-xl border transition-all duration-200 overflow-hidden
+                    ${isUrgent
+                      ? "border-red-200 bg-red-50/30"
+                      : "border-gray-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/20"
+                    }`}
+                >
+                  <button
+                    onClick={() => setExpanded(isOpen ? null : n.id)}
+                    className="w-full flex items-start gap-3 px-4 py-3.5 text-left"
+                  >
+                    {/* Left icon */}
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5
+                      ${isUrgent ? "bg-red-100" : n.is_pinned ? "bg-emerald-100" : "bg-gray-100"}`}>
+                      {isUrgent
+                        ? <AlertCircle size={15} className="text-red-600" />
+                        : n.is_pinned
+                        ? <Pin size={15} className="text-emerald-600" />
+                        : <Bell size={15} className="text-gray-500" />
+                      }
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      {/* Badges */}
+                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                        {n.is_pinned && (
+                          <span className="text-[10px] bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded-full font-semibold">
+                            📌 Pinned
+                          </span>
+                        )}
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${cat.bg} ${cat.text}`}>
+                          {n.category}
+                        </span>
+                        {n.priority && n.priority !== "Normal" && (
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full
+                            ${isUrgent ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                            {n.priority}
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-sm font-semibold text-gray-900 leading-tight">{n.title}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {n.author ?? "Admin"} ·{" "}
+                        {new Date(n.created_at).toLocaleDateString("en-IN", {
+                          day: "2-digit", month: "short", year: "numeric",
+                        })}
+                      </p>
+                    </div>
+
+                    {/* Chevron */}
+                    <svg
+                      width="14" height="14" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth="2"
+                      className={`flex-shrink-0 mt-1 text-gray-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+                    >
+                      <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+
+                  {/* Expanded content */}
+                  {isOpen && (
+                    <div className="px-4 pb-4 pt-0 border-t border-gray-100">
+                      <div className="mt-3 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap bg-gray-50 rounded-xl p-3 border border-gray-100">
+                        {n.content}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function TeacherDashboardPage() {
   const [profile,   setProfile]   = useState(null);
   const [classes,   setClasses]   = useState([]);
@@ -81,16 +228,15 @@ export default function TeacherDashboardPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const today    = new Date();
-  const dayName  = DAYS[today.getDay()];
-  const dateStr  = today.toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const today   = new Date();
+  const dayName = DAYS[today.getDay()];
+  const dateStr = today.toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   const todayLectures = timetable
     .filter(t => t.day?.toLowerCase() === dayName.toLowerCase())
     .sort((a, b) => (a.start_time || "").localeCompare(b.start_time || ""));
 
-  // first class the teacher is class-teacher of
-  const primaryClass = classes[0];
+  const primaryClass  = classes[0];
   const classStudents = students
     .filter(s => primaryClass
       ? (s.class_id === primaryClass.id || (s.class === primaryClass.grade && s.section === primaryClass.section))
@@ -139,14 +285,14 @@ export default function TeacherDashboardPage() {
 
           {/* Stats */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard icon={BookOpen}     label="Today's Lectures" value={loading ? "…" : todayLectures.length}   color="text-emerald-600" bg="bg-emerald-50" />
-            <StatCard icon={Users}        label="My Students"       value={loading ? "…" : students.length}         color="text-blue-600"    bg="bg-blue-50"    />
-            <StatCard icon={GraduationCap}label="My Classes"        value={loading ? "…" : classes.length}          color="text-violet-600"  bg="bg-violet-50"  />
-            <StatCard icon={CalendarDays} label="Day"               value={loading ? "…" : dayName.slice(0,3)}      color="text-amber-600"   bg="bg-amber-50"   />
+            <StatCard icon={BookOpen}      label="Today's Lectures" value={loading ? "…" : todayLectures.length} color="text-emerald-600" bg="bg-emerald-50" />
+            <StatCard icon={Users}         label="My Students"       value={loading ? "…" : students.length}      color="text-blue-600"    bg="bg-blue-50"    />
+            <StatCard icon={GraduationCap} label="My Classes"        value={loading ? "…" : classes.length}       color="text-violet-600"  bg="bg-violet-50"  />
+            <StatCard icon={CalendarDays}  label="Day"               value={loading ? "…" : dayName.slice(0,3)}   color="text-amber-600"   bg="bg-amber-50"   />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            {/* Profile snippet */}
+            {/* Profile card */}
             <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="h-2 bg-gradient-to-r from-emerald-500 to-teal-600" />
               <div className="p-5">
@@ -180,7 +326,7 @@ export default function TeacherDashboardPage() {
               </div>
             </div>
 
-            {/* Right: today's lectures + class */}
+            {/* Right column */}
             <div className="lg:col-span-2 space-y-5">
               {/* Today's lectures */}
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -247,7 +393,7 @@ export default function TeacherDashboardPage() {
                       ))}
                       {classStudents.length > 5 && (
                         <div className="px-5 py-3 text-center text-xs text-emerald-600 font-semibold">
-                          +{classStudents.length - 5} more students · <a href="/teacher/class" className="underline">View all</a>
+                          +{classStudents.length - 5} more · <a href="/teacher/class" className="underline">View all</a>
                         </div>
                       )}
                     </div>
@@ -259,6 +405,9 @@ export default function TeacherDashboardPage() {
                   )}
                 </div>
               )}
+
+              {/* ✅ NOTICES — renders here */}
+              <NoticesSection />
             </div>
           </div>
         </div>
