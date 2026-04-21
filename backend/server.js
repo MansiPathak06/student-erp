@@ -8,7 +8,9 @@ const adminRoutes     = require("./routes/adminRoutes");
 const studentRoutes   = require("./routes/studentRoutes");
 const teacherRoutes   = require("./routes/teacherRoutes");
 const timetableRoutes = require("./routes/timetableRoutes");
-const feesRoutes = require("./routes/feesRoutes");
+const adminNoticesRoutes   = require("./routes/admin/notices");
+const studentNoticesRoutes = require("./routes/student/notices");
+const teacherNoticesRoutes = require("./routes/teacher/notices");
 
 // ✅ Pehle app banao
 const app = express();
@@ -18,13 +20,17 @@ app.use(express.json());
 
 app.get("/", (req, res) => res.json({ message: "EduERP API running ✅" }));
 
-// ✅ Sab routes yahan
+// ✅ Specific routes PEHLE — warna /api/admin catch kar leta hai
+app.use("/api/admin/notices",   adminNoticesRoutes);
+app.use("/api/student/notices", studentNoticesRoutes);
+app.use("/api/teacher/notices", teacherNoticesRoutes);
+
+// Generic routes baad mein
 app.use("/api/auth",    authRoutes);
 app.use("/api/admin",   adminRoutes);
-app.use("/api/admin",   timetableRoutes); // ✅ sahi jagah
+app.use("/api/admin",   timetableRoutes);
 app.use("/api/student", studentRoutes);
 app.use("/api/teacher", teacherRoutes);
-app.use("/api/fees", feesRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use((req, res) => res.status(404).json({ message: "Route not found" }));
