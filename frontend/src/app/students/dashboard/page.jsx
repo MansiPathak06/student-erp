@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import StudentSidebar from "@/components/StudentSidebar";
-// import StudentFeeCard from "@/components/StudentFeeCard";
+import StudentFeeCard from "@/components/StudentFeeCard";
 import StudentHomeworkList from "@/components/StudentHomeworkList";
 import { apiFetch } from "@/lib/api";
 import {
@@ -397,21 +397,12 @@ export default function StudentDashboardPage() {
 
               {/* ✅ NOTICES — renders here below teachers */}
               <NoticesSection />
-<<<<<<< HEAD
+              <StudentHomeworkList/>
               <StudentFeeCard studentId={student?.student_id} academicYear="2024-25" />
             </div>
           </div>
         </div>
         
-=======
-              
-<StudentHomeworkList />
-
-            </div>
-          </div>
-        </div>
-        {/* <StudentFeeCard studentId={user.student_id} academicYear="2024-25" /> */}
->>>>>>> c4501cc681160e68e762394a15961a9cb7656ef5
       </main>
     </div>
   );

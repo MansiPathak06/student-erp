@@ -8,7 +8,7 @@ const getDashboard = async (req, res) => {
       pool.query("SELECT COUNT(*) FROM students"),
       pool.query("SELECT COUNT(*) FROM teachers"),
       pool.query("SELECT COUNT(*) FROM classes"),
-      pool.query("SELECT COALESCE(SUM(amount),0) as total FROM fees WHERE status = 'Paid' AND EXTRACT(MONTH FROM paid_date) = EXTRACT(MONTH FROM NOW())"),
+      pool.query("SELECT COALESCE(SUM(amount),0) as total FROM fees WHERE status = 'Paid' AND EXTRACT(MONTH FROM paid_on) = EXTRACT(MONTH FROM NOW())"),
     ]);
 
     const attendanceResult = await pool.query(`

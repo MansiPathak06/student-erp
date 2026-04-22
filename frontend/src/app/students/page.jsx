@@ -38,7 +38,7 @@ function normalizeStudent(s) {
     name:           s.name          || "",
     email:          s.email         || "",
     roll:           s.roll_number   || "",
-    class:          s.class         || "",
+    class: (s.class || "").replace(/^Class\s+/i, "").trim(),
     section:        s.section       || "",
     classTeacher:   s.class_teacher || "",
     gender:         s.gender        || "",
@@ -329,20 +329,20 @@ function AddEditModal({ student, classMeta, onClose, onSave, saving }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const handleClassChange = (classId) => {
-    const found = classMeta.find(c => String(c.id) === String(classId));
-    if (found) {
-      setForm(f => ({
-        ...f,
-        classId: String(found.id),
-        class: found.class_name || "",
-        section: found.section || "",
-        classTeacher: found.teacher_name || "",
-      }));
-    } else {
-      setForm(f => ({ ...f, classId: "", class: "", section: "", classTeacher: "" }));
-    }
-  };
+ const handleClassChange = (classId) => {
+  const found = classMeta.find(c => String(c.id) === String(classId));
+  if (found) {
+    setForm(f => ({
+      ...f,
+      classId: String(found.id),
+      class: (found.class_name || "").replace(/^Class\s+/i, "").trim(), // ← strip prefix
+      section: found.section || "",
+      classTeacher: found.teacher_name || "",
+    }));
+  } else {
+    setForm(f => ({ ...f, classId: "", class: "", section: "", classTeacher: "" }));
+  }
+};
 
   const handleSave = () => {
     if (!form.name.trim()) return alert("Student name is required.");
@@ -425,7 +425,7 @@ function AddEditModal({ student, classMeta, onClose, onSave, saving }) {
 
         <div>
           <label className="field-label">Grade / Class</label>
-          <input type="text" value={form.class ? `Class ${form.class}` : ""} readOnly
+          <input type="text" value={form.class || ""} readOnly
             placeholder="Auto-filled" className="field-input bg-gray-50 text-gray-500 cursor-not-allowed" />
         </div>
         <div>

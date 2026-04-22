@@ -141,15 +141,12 @@ export default function TeacherClassPage() {
   const activeClass = classes[activeClassIdx] || null;
 
   // Filter students for active class, sort alphabetically
-  const classStudents = useMemo(() => {
-    if (!activeClass) return [];
-    return students
-      .filter(s =>
-        s.class_id === activeClass.id ||
-        (s.class === (activeClass.grade || activeClass.class_name) && s.section === activeClass.section)
-      )
-      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-  }, [students, activeClass]);
+const classStudents = useMemo(() => {
+  if (!activeClass) return [];
+  return students
+    .filter(s => s.class_id === activeClass.id)
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+}, [students, activeClass]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -220,7 +217,7 @@ export default function TeacherClassPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <h2 className="text-lg font-bold text-gray-900">
-                  Class {activeClass.grade || activeClass.class_name} – Section {activeClass.section}
+                  Class {(activeClass.class_name || "").replace(/^Class\s+/i, "").trim() || activeClass.grade} – Section {activeClass.section}
                 </h2>
                 {activeClass.room_no && (
                   <p className="text-xs text-gray-400 mt-0.5">Room: {activeClass.room_no}</p>

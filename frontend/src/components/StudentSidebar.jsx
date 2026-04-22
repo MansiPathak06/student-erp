@@ -3,11 +3,8 @@
 import { useState, useEffect } from "react";
 import {
   LayoutDashboard, GraduationCap, CalendarDays,
-<<<<<<< HEAD
   Users, LogOut, X, Menu, ChevronLeft, Bell,CreditCard,
-=======
-  Users, LogOut, X, Menu, ChevronLeft, Bell, BookOpen,
->>>>>>> c4501cc681160e68e762394a15961a9cb7656ef5
+  BookOpen,
 } from "lucide-react";
 import SidebarItem from "@/components/SidebarItem";
 
@@ -20,12 +17,8 @@ const STUDENT_NAV = [
       { icon: CalendarDays,    label: "Timetable",  href: "/students/timetable" },
       { icon: BookOpen,        label: "Homework",   href: "/students/homework"  }, // ✅ NEW
       { icon: Users,           label: "My Teachers",href: "/students/teachers"  },
-<<<<<<< HEAD
       { icon: Bell,            label: "Notices",    href: "/students/notices"    },
       { icon: CreditCard,      label: "My Fees",    href: "/students/fees"      },
-=======
-      { icon: Bell,            label: "Notices",    href: "/students/notices"   },
->>>>>>> c4501cc681160e68e762394a15961a9cb7656ef5
     ],
   },
 ];

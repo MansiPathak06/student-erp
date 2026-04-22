@@ -13,9 +13,10 @@ const getToken = () => {
   const m = document.cookie.match(/(^| )token=([^;]+)/);
   return m ? m[2] : null;
 };
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 const apiFetch = (path, opts = {}) =>
-  fetch(`/api${path}`, {
+   fetch(`${API_BASE}/api${path}`, {
     headers: {
       Authorization: `Bearer ${getToken()}`,
       ...(opts.body && !(opts.body instanceof FormData)
