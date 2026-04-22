@@ -11,6 +11,7 @@ const timetableRoutes = require("./routes/timetableRoutes");
 const adminNoticesRoutes   = require("./routes/admin/notices");
 const studentNoticesRoutes = require("./routes/student/notices");
 const teacherNoticesRoutes = require("./routes/teacher/notices");
+const homeworkRoutes = require("./routes/homeworkRoutes");
 
 // ✅ Pehle app banao
 const app = express();
@@ -31,6 +32,7 @@ app.use("/api/admin",   adminRoutes);
 app.use("/api/admin",   timetableRoutes);
 app.use("/api/student", studentRoutes);
 app.use("/api/teacher", teacherRoutes);
+app.use("/api/homework", homeworkRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use((req, res) => res.status(404).json({ message: "Route not found" }));

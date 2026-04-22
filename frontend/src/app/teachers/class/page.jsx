@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import TeacherSidebar from "@/components/TeacherSidebar";
 import { Search, Users, Phone, Mail, Hash } from "lucide-react";
+import TeacherHomeworkForm from "@/components/TeacherHomeworkForm";
 
 const getToken = () => {
   if (typeof window === "undefined") return null;
@@ -300,6 +301,7 @@ export default function TeacherClassPage() {
             </>
           )}
         </div>
+        <TeacherHomeworkForm />
       </main>
     </div>
   );
