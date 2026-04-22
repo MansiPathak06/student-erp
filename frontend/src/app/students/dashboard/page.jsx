@@ -396,10 +396,11 @@ export default function StudentDashboardPage() {
 
               {/* ✅ NOTICES — renders here below teachers */}
               <NoticesSection />
+              <StudentFeeCard studentId={student?.student_id} academicYear="2024-25" />
             </div>
           </div>
         </div>
-        <StudentFeeCard studentId={user.student_id} academicYear="2024-25" />
+        
       </main>
     </div>
   );

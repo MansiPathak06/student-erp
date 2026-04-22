@@ -39,8 +39,7 @@ const NAV_SECTIONS = [
     heading: "Management",
     items: [
       { icon: CalendarDays, label: "Timetable", href: "/timetable" },
-      { icon: BookOpen,     label: "Library",   href: "/library" },
-      { icon: Bus,          label: "Transport", href: "/transport" },
+      
     ],
   },
   

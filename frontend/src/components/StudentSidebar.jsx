@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   LayoutDashboard, GraduationCap, CalendarDays,
-  Users, LogOut, X, Menu, ChevronLeft, Bell,
+  Users, LogOut, X, Menu, ChevronLeft, Bell,CreditCard,
 } from "lucide-react";
 import SidebarItem from "@/components/SidebarItem";
 
@@ -16,6 +16,7 @@ const STUDENT_NAV = [
       { icon: CalendarDays,    label: "Timetable",  href: "/students/timetable" },
       { icon: Users,           label: "My Teachers",href: "/students/teachers"  },
       { icon: Bell,            label: "Notices",    href: "/students/notices"    },
+      { icon: CreditCard,      label: "My Fees",    href: "/students/fees"      },
     ],
   },
 ];

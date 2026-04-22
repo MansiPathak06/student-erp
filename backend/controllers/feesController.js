@@ -54,7 +54,6 @@ exports.upsertStructure = async (req, res) => {
 
     const baseFee = Number(tuition_fee) + Number(library_fee) + Number(other_fee);
 
-    // fee_structures mein section column NAHI hai — without section upsert
     const { rows: structRows } = await client.query(
       `INSERT INTO fee_structures
          (class, academic_year, tuition_fee, transport_fee, library_fee, other_fee, created_by)
@@ -70,7 +69,6 @@ exports.upsertStructure = async (req, res) => {
 
     const structure = structRows[0];
 
-    // Students find karo class + section se (students table mein section hai)
     const studentParams = [cls];
     let studentWhere = "s.class = $1";
     if (section) {
@@ -137,7 +135,7 @@ exports.deleteStructure = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STUDENT FEES
+// STUDENT FEES — Admin / Teacher
 // ─────────────────────────────────────────────────────────────────────────────
 
 exports.getStudentFees = async (req, res) => {
@@ -255,12 +253,19 @@ exports.updateStudentFee = async (req, res) => {
     const { paid_amount, status: explicitStatus, note, due_date, payment_amount, transport_fee } = req.body;
 
     const newTransport = transport_fee !== undefined ? Number(transport_fee) : Number(rec.transport_fee || 0);
-    const tuition = Number(rec.tuition_fee || 0);
-    const library = Number(rec.library_fee || 0);
-    const other   = Number(rec.other_fee   || 0);
+    const tuition  = Number(rec.tuition_fee || 0);
+    const library  = Number(rec.library_fee || 0);
+    const other    = Number(rec.other_fee   || 0);
     const newTotal = tuition + library + other + newTransport;
-    const newPaid  = paid_amount !== undefined ? Number(paid_amount) : Number(rec.paid_amount);
-    const newDue   = due_date !== undefined ? due_date : rec.due_date;
+
+    let newPaid = Number(rec.paid_amount || 0);
+    if (payment_amount && Number(payment_amount) > 0) {
+      newPaid = newPaid + Number(payment_amount);
+    } else if (paid_amount !== undefined) {
+      newPaid = Number(paid_amount);
+    }
+
+    const newDue      = due_date !== undefined ? due_date : rec.due_date;
     const finalStatus = explicitStatus || resolveStatus(newPaid, newTotal, newDue);
 
     const { rows } = await client.query(
@@ -297,13 +302,36 @@ exports.updateStudentFee = async (req, res) => {
   }
 };
 
+// ✅ NEW — was missing, caused crash at startup
 exports.deleteStudentFee = async (req, res) => {
+  const client = await pool.connect();
   try {
-    await pool.query("DELETE FROM student_fees WHERE id = $1", [req.params.id]);
-    res.json({ success: true, message: "Deleted" });
+    await client.query("BEGIN");
+
+    // Delete payments first (FK constraint)
+    await client.query(
+      `DELETE FROM fee_payments WHERE student_fee_id = $1`,
+      [req.params.id]
+    );
+
+    const { rows } = await client.query(
+      `DELETE FROM student_fees WHERE id = $1 RETURNING id`,
+      [req.params.id]
+    );
+
+    if (!rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ success: false, message: "Fee record not found" });
+    }
+
+    await client.query("COMMIT");
+    res.json({ success: true, message: "Fee record deleted", id: rows[0].id });
   } catch (err) {
+    await client.query("ROLLBACK");
     console.error("deleteStudentFee:", err);
     res.status(500).json({ success: false, message: "Server error" });
+  } finally {
+    client.release();
   }
 };
 
@@ -349,13 +377,22 @@ exports.getStats = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STUDENT SELF — apni fees dekhna
+// STUDENT SELF — GET /api/fees/student/fees
 // ─────────────────────────────────────────────────────────────────────────────
 
 exports.getMyFees = async (req, res) => {
   try {
     const { academic_year = "2024-25" } = req.query;
-    const studentId = req.user.student_id || req.user.id;
+
+    const { rows: studentRows } = await pool.query(
+      `SELECT id FROM students WHERE user_id = $1`,
+      [req.user.id]
+    );
+
+    if (!studentRows.length)
+      return res.status(404).json({ success: false, message: "Student record not found" });
+
+    const studentId = studentRows[0].id;
 
     const { rows } = await pool.query(
       `SELECT
@@ -366,8 +403,9 @@ exports.getMyFees = async (req, res) => {
          u.name
        FROM student_fees sf
        JOIN students s ON s.id = sf.student_id
-       JOIN users u ON u.id = s.user_id
+       JOIN users   u ON u.id = s.user_id
        WHERE sf.student_id = $1 AND sf.academic_year = $2
+       ORDER BY sf.id DESC
        LIMIT 1`,
       [studentId, academic_year]
     );
