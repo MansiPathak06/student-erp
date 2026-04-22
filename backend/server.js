@@ -30,12 +30,9 @@ app.use("/api/admin",   adminRoutes);
 app.use("/api/admin",   timetableRoutes);
 app.use("/api/student", studentRoutes);
 app.use("/api/teacher", teacherRoutes);
-<<<<<<< HEAD
 app.use("/api/fees",    feesRoutes);                                // ✅ ADD
-=======
 app.use("/api/homework", homeworkRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
->>>>>>> c4501cc681160e68e762394a15961a9cb7656ef5
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use((req, res) => res.status(404).json({ message: "Route not found" }));
