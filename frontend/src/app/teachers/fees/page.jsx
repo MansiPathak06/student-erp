@@ -451,7 +451,8 @@ export default function TeacherFeesPage() {
     if (!activeClass) return;
     setStudentsLoading(true);
     try {
-      const cls     = activeClass.class || activeClass.grade || activeClass.class_name;
+      const cls = activeClass.grade || 
+            (activeClass.class_name || "").replace(/^Class\s+/i, "").trim();
       const section = activeClass.section || "";
       const params  = new URLSearchParams({ class: cls, academic_year: "2024-25", limit: "200" });
       if (section) params.append("section", section);

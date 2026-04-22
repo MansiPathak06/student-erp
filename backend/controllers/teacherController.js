@@ -458,15 +458,15 @@ const getStudents = async (req, res) => {
     );
     if (teacher.rows.length === 0)
       return res.status(404).json({ message: "Teacher not found" });
-    const classes = await pool.query(
-      "SELECT class_name, section FROM classes WHERE teacher_id = $1",
-      [teacher.rows[0].id]
-    );
+  const classes = await pool.query(
+  "SELECT class_name, grade, section FROM classes WHERE teacher_id = $1",
+  [teacher.rows[0].id]
+);
     if (classes.rows.length === 0) return res.json([]);
     const conditions = classes.rows
       .map((_, i) => `(s.class = $${i * 2 + 1} AND s.section = $${i * 2 + 2})`)
       .join(" OR ");
-    const values = classes.rows.flatMap(c => [c.class_name, c.section]);
+    const values = classes.rows.flatMap(c => [c.grade || c.class_name, c.section]);
     const result = await pool.query(
       `SELECT s.*, u.name, u.email
        FROM students s JOIN users u ON s.user_id = u.id
