@@ -397,13 +397,7 @@ export default function StudentDashboardPage() {
 
               {/* ✅ NOTICES — renders here below teachers */}
               <NoticesSection />
-<<<<<<< HEAD
-              <StudentHomeworkList>
-
-              </StudentHomeworkList>
-=======
               <StudentHomeworkList/>
->>>>>>> 3fe0918f022beb14780868336e8c22a6910dae78
               <StudentFeeCard studentId={student?.student_id} academicYear="2024-25" />
             </div>
           </div>

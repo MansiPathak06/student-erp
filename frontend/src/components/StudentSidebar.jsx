@@ -4,11 +4,7 @@ import { useState, useEffect } from "react";
 import {
   LayoutDashboard, GraduationCap, CalendarDays,
   Users, LogOut, X, Menu, ChevronLeft, Bell,CreditCard,
-<<<<<<< HEAD
    BookOpen,
-=======
-  BookOpen,
->>>>>>> 3fe0918f022beb14780868336e8c22a6910dae78
 } from "lucide-react";
 import SidebarItem from "@/components/SidebarItem";
 
