@@ -656,6 +656,91 @@ const updateStudentFee = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+// GET /api/teacher/homework-classes
+// Works for BOTH class teachers AND subject teachers
+const getHomeworkClasses = async (req, res) => {
+  try {
+    const teacher = await pool.query(
+      "SELECT id, teacher_type FROM teachers WHERE user_id = $1",
+      [req.user.id]
+    );
+    if (teacher.rows.length === 0)
+      return res.status(404).json({ message: "Teacher not found" });
+
+    const { id: teacherId, teacher_type } = teacher.rows[0];
+    const result = [];
+
+    // ── Class Teacher: classes table se ──
+    if (teacher_type === "Class Teacher" || teacher_type === "Both") {
+      const classes = await pool.query(
+        "SELECT id, grade, section, class_name FROM classes WHERE teacher_id = $1",
+        [teacherId]
+      );
+      classes.rows.forEach(c => {
+        result.push({
+          class_id: c.id,
+          grade: c.grade || c.class_name,
+          section: c.section,
+          source: "class_teacher",
+        });
+      });
+    }
+
+    // ── Subject Teacher: teacher_subjects table se ──
+    if (teacher_type === "Subject Teacher" || teacher_type === "Both") {
+      const subjRows = await pool.query(
+        "SELECT subject, class_name, section FROM teacher_subjects WHERE teacher_id = $1",
+        [teacherId]
+      );
+
+      for (const a of subjRows.rows) {
+        if (!a.class_name || !a.section) continue;
+
+        // classes table mein matching class dhundo
+        const cls = await pool.query(
+          `SELECT id, grade, section 
+           FROM classes 
+           WHERE (grade = $1 OR class_name = $1 OR class_name = $2) 
+             AND section = $3 
+           LIMIT 1`,
+          [a.class_name, `Class ${a.class_name}`, a.section]
+        );
+
+        if (cls.rows.length > 0) {
+          const exists = result.find(r => r.class_id === cls.rows[0].id);
+          if (!exists) {
+            result.push({
+              class_id: cls.rows[0].id,
+              grade: cls.rows[0].grade || a.class_name,
+              section: cls.rows[0].section,
+              source: "subject_teacher",
+              subject: a.subject,
+            });
+          }
+        } else {
+          // Class table mein entry nahi — directly show karo
+          const exists = result.find(
+            r => String(r.grade) === String(a.class_name) && r.section === a.section
+          );
+          if (!exists) {
+            result.push({
+              class_id: null,
+              grade: a.class_name,
+              section: a.section,
+              source: "subject_teacher_no_class",
+              subject: a.subject,
+            });
+          }
+        }
+      }
+    }
+
+    return res.json(result);
+  } catch (err) {
+    console.error("getHomeworkClasses:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
  
 
 module.exports = {
@@ -672,5 +757,6 @@ module.exports = {
     updateTeacher, 
     checkTeacherAlreadyClassTeacher,
     getTimetable,
-    updateStudentFee
+    updateStudentFee,
+      getHomeworkClasses,
 };

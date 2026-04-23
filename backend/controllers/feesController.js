@@ -1,430 +1,522 @@
-// controllers/feesController.js
 const pool = require("../config/db");
+const Razorpay = require("razorpay");
+const crypto = require("crypto");
+const path = require("path");
+const fs = require("fs");
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
-const resolveStatus = (paid, total, dueDate) => {
-  if (Number(total) <= 0) return "Pending";
-  if (Number(paid) >= Number(total)) return "Paid";
-  if (Number(paid) > 0) return "Partial";
-  if (dueDate && new Date(dueDate) < new Date()) return "Overdue";
-  return "Pending";
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const getStudentFeeRecord = async (userId) => {
+  const studentRes = await pool.query(
+    "SELECT id, class, section FROM students WHERE user_id = $1",
+    [userId]
+  );
+  if (!studentRes.rows.length) throw new Error("Student not found");
+  const studentId = studentRes.rows[0].id;
+
+  const feeRes = await pool.query(
+    `SELECT sf.*, 
+            s.class, s.section,
+            u.name AS student_name, u.email AS student_email
+     FROM student_fees sf
+     JOIN students s ON sf.student_id = s.id
+     JOIN users u ON s.user_id = u.id
+     WHERE sf.student_id = $1
+     ORDER BY sf.created_at DESC LIMIT 1`,
+    [studentId]
+  );
+  return { studentId, feeRecord: feeRes.rows[0] || null };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FEE STRUCTURES
-// ─────────────────────────────────────────────────────────────────────────────
-
-exports.getAllStructures = async (req, res) => {
+// ── GET /api/fees/student/fees ─────────────────────────────────────────────────
+const getStudentFees = async (req, res) => {
   try {
-    const { academic_year = "2024-25" } = req.query;
-    const { rows } = await pool.query(
-      `SELECT fs.*, u.name AS set_by_name,
-              (SELECT COUNT(*) FROM student_fees sf
-               WHERE sf.fee_structure_id = fs.id) AS student_count
-       FROM fee_structures fs
-       LEFT JOIN users u ON u.id = fs.created_by
-       WHERE fs.academic_year = $1
-       ORDER BY fs.class`,
-      [academic_year]
-    );
-    res.json({ success: true, data: rows });
-  } catch (err) {
-    console.error("getAllStructures:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
+    const { studentId, feeRecord } = await getStudentFeeRecord(req.user.id);
+    if (!feeRecord) return res.json(null);
 
-exports.upsertStructure = async (req, res) => {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    const {
-      class: cls,
-      section,
-      academic_year,
-      tuition_fee = 0,
-      library_fee = 0,
-      other_fee = 0,
-      due_date,
-    } = req.body;
-
-    if (!cls || !academic_year)
-      return res.status(400).json({ success: false, message: "class and academic_year are required" });
-
-    const baseFee = Number(tuition_fee) + Number(library_fee) + Number(other_fee);
-
-    const { rows: structRows } = await client.query(
-      `INSERT INTO fee_structures
-         (class, academic_year, tuition_fee, transport_fee, library_fee, other_fee, created_by)
-       VALUES ($1, $2, $3, 0, $4, $5, $6)
-       ON CONFLICT (class, academic_year) DO UPDATE SET
-         tuition_fee = EXCLUDED.tuition_fee,
-         library_fee = EXCLUDED.library_fee,
-         other_fee   = EXCLUDED.other_fee,
-         updated_at  = NOW()
-       RETURNING *`,
-      [cls, academic_year, tuition_fee, library_fee, other_fee, req.user.id]
-    );
-
-    const structure = structRows[0];
-
-    const studentParams = [cls];
-    let studentWhere = "s.class = $1";
-    if (section) {
-      studentWhere += " AND s.section = $2";
-      studentParams.push(section);
-    }
-
-    const { rows: students } = await client.query(
-      `SELECT s.id FROM students s WHERE ${studentWhere}`,
-      studentParams
-    );
-
-    let newCount = 0;
-    const status = resolveStatus(0, baseFee, due_date);
-
-    for (const student of students) {
-      const { rowCount } = await client.query(
-        `INSERT INTO student_fees
-           (student_id, fee_structure_id, academic_year,
-            tuition_fee, library_fee, other_fee, transport_fee,
-            total_fees, paid_amount, due_date, status, last_updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, 0, $8, $9, $10)
-         ON CONFLICT (student_id, academic_year) DO UPDATE SET
-           fee_structure_id = EXCLUDED.fee_structure_id,
-           tuition_fee      = EXCLUDED.tuition_fee,
-           library_fee      = EXCLUDED.library_fee,
-           other_fee        = EXCLUDED.other_fee,
-           total_fees       = EXCLUDED.tuition_fee + EXCLUDED.library_fee
-                            + EXCLUDED.other_fee + student_fees.transport_fee,
-           due_date         = EXCLUDED.due_date,
-           updated_at       = NOW()`,
-        [student.id, structure.id, academic_year,
-         tuition_fee, library_fee, other_fee,
-         baseFee, due_date || null, status, req.user.id]
-      );
-      if (rowCount > 0) newCount++;
-    }
-
-    await client.query("COMMIT");
-    res.json({
-      success: true,
-      data: structure,
-      studentsAssigned: newCount,
-      totalStudents: students.length,
-      message: `Fee structure saved. ${newCount} student records created/updated.`,
-    });
-  } catch (err) {
-    await client.query("ROLLBACK");
-    console.error("upsertStructure:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  } finally {
-    client.release();
-  }
-};
-
-exports.deleteStructure = async (req, res) => {
-  try {
-    await pool.query("DELETE FROM fee_structures WHERE id = $1", [req.params.id]);
-    res.json({ success: true, message: "Structure deleted" });
-  } catch (err) {
-    console.error("deleteStructure:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STUDENT FEES — Admin / Teacher
-// ─────────────────────────────────────────────────────────────────────────────
-
-exports.getStudentFees = async (req, res) => {
-  try {
-    const {
-      class: cls, section, status, academic_year = "2024-25",
-      search = "", page = 1, limit = 10,
-    } = req.query;
-
-    const params = [academic_year];
-    let where = "sf.academic_year = $1";
-    let idx = 2;
-
-    if (cls)     { where += ` AND s.class = $${idx++}`;   params.push(cls); }
-    if (section) { where += ` AND s.section = $${idx++}`; params.push(section); }
-    if (status)  { where += ` AND sf.status = $${idx++}`; params.push(status); }
-    if (search) {
-      where += ` AND (u.name ILIKE $${idx} OR s.roll_number::text ILIKE $${idx})`;
-      params.push(`%${search}%`);
-      idx++;
-    }
-
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-
-    const countRes = await pool.query(
-      `SELECT COUNT(*)
-       FROM student_fees sf
-       JOIN students s ON s.id = sf.student_id
-       JOIN users u ON u.id = s.user_id
-       WHERE ${where}`,
-      params
-    );
-
-    const { rows } = await pool.query(
-      `SELECT
-         sf.id, sf.student_id, sf.academic_year, sf.status, sf.note,
-         sf.due_date, sf.paid_amount, sf.total_fees, sf.updated_at,
-         sf.tuition_fee, sf.library_fee, sf.other_fee, sf.transport_fee,
-         s.roll_number, s.class, s.section,
-         u.name, u.email,
-         uu.name AS last_updated_by_name
-       FROM student_fees sf
-       JOIN students s ON s.id = sf.student_id
-       JOIN users u ON u.id = s.user_id
-       LEFT JOIN fee_structures fs ON fs.id = sf.fee_structure_id
-       LEFT JOIN users uu ON uu.id = sf.last_updated_by
-       WHERE ${where}
-       ORDER BY s.class, s.section, u.name
-       LIMIT $${idx} OFFSET $${idx + 1}`,
-      [...params, parseInt(limit), offset]
-    );
-
-    res.json({
-      success: true,
-      data: rows,
-      total: parseInt(countRes.rows[0].count),
-      page: parseInt(page),
-      limit: parseInt(limit),
-    });
-  } catch (err) {
-    console.error("getStudentFees:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-exports.getStudentFeeById = async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      `SELECT
-         sf.*,
-         s.roll_number, s.class, s.section,
-         u.name, u.email,
-         uu.name AS last_updated_by_name
-       FROM student_fees sf
-       JOIN students s ON s.id = sf.student_id
-       JOIN users u ON u.id = s.user_id
-       LEFT JOIN users uu ON uu.id = sf.last_updated_by
-       WHERE sf.id = $1`,
-      [req.params.id]
-    );
-    if (!rows.length)
-      return res.status(404).json({ success: false, message: "Not found" });
-
-    const { rows: payments } = await pool.query(
+    const paymentsRes = await pool.query(
       `SELECT fp.*, u.name AS recorded_by_name
        FROM fee_payments fp
-       LEFT JOIN users u ON u.id = fp.recorded_by
+       LEFT JOIN users u ON fp.recorded_by = u.id
        WHERE fp.student_fee_id = $1
-       ORDER BY fp.paid_on DESC`,
-      [rows[0].id]
+       ORDER BY fp.created_at DESC`,
+      [feeRecord.id]
     );
 
-    res.json({ success: true, data: { ...rows[0], payments } });
+    res.json({ ...feeRecord, payments: paymentsRes.rows });
   } catch (err) {
-    console.error("getStudentFeeById:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    console.error("getStudentFees error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
-exports.updateStudentFee = async (req, res) => {
+// ── POST /api/fees/payment/create-order ───────────────────────────────────────
+const createOrder = async (req, res) => {
+  try {
+    const { amount } = req.body;
+    if (!amount || amount <= 0)
+      return res.status(400).json({ message: "Invalid amount" });
+
+    const { studentId, feeRecord } = await getStudentFeeRecord(req.user.id);
+    if (!feeRecord)
+      return res.status(404).json({ message: "No fee record found. Contact admin." });
+
+    const remaining =
+      Number(feeRecord.total_fees || 0) - Number(feeRecord.paid_amount || 0);
+    if (amount > remaining)
+      return res.status(400).json({ message: `Amount exceeds remaining balance of ₹${remaining}` });
+
+    const order = await razorpay.orders.create({
+      amount: Math.round(amount * 100),
+      currency: "INR",
+      receipt: `fee_${studentId}_${Date.now()}`,
+      notes: { student_id: studentId, student_fee_id: feeRecord.id },
+    });
+
+    await pool.query(
+      `INSERT INTO fee_payment_orders
+         (razorpay_order_id, student_fee_id, student_id, amount, status)
+       VALUES ($1, $2, $3, $4, 'created')
+       ON CONFLICT (razorpay_order_id) DO NOTHING`,
+      [order.id, feeRecord.id, studentId, amount]
+    );
+
+    res.json({
+      order_id: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      key_id: process.env.RAZORPAY_KEY_ID,
+      student_name: req.user.name,
+      student_email: req.user.email,
+    });
+  } catch (err) {
+    console.error("createOrder error:", err);
+    res.status(500).json({ message: "Failed to create payment order" });
+  }
+};
+
+// ── POST /api/fees/payment/verify ─────────────────────────────────────────────
+const verifyPayment = async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+    const expectedSig = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex");
+
+    if (expectedSig !== razorpay_signature)
+      return res.status(400).json({ message: "Invalid payment signature" });
+
+    const orderRes = await pool.query(
+      "SELECT * FROM fee_payment_orders WHERE razorpay_order_id = $1",
+      [razorpay_order_id]
+    );
+    if (!orderRes.rows.length)
+      return res.status(404).json({ message: "Order not found" });
+
+    const order = orderRes.rows[0];
+
+    await pool.query(
+      `UPDATE fee_payment_orders
+       SET status = 'paid', razorpay_payment_id = $1, updated_at = NOW()
+       WHERE razorpay_order_id = $2`,
+      [razorpay_payment_id, razorpay_order_id]
+    );
+
+    res.json({
+      success: true,
+      message: "Payment verified. Please upload your receipt.",
+      order_id: razorpay_order_id,
+      payment_id: razorpay_payment_id,
+      amount: order.amount,
+      student_fee_id: order.student_fee_id,
+    });
+  } catch (err) {
+    console.error("verifyPayment error:", err);
+    res.status(500).json({ message: "Payment verification failed" });
+  }
+};
+
+// ── POST /api/fees/payment/upload-receipt ─────────────────────────────────────
+const uploadReceipt = async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, amount, note } = req.body;
+    if (!req.file)
+      return res.status(400).json({ message: "Receipt file is required" });
+
+    const orderRes = await pool.query(
+      `SELECT fpo.*, sf.student_id
+       FROM fee_payment_orders fpo
+       JOIN student_fees sf ON fpo.student_fee_id = sf.id
+       JOIN students s ON sf.student_id = s.id
+       WHERE fpo.razorpay_order_id = $1 AND s.user_id = $2`,
+      [razorpay_order_id, req.user.id]
+    );
+    if (!orderRes.rows.length)
+      return res.status(403).json({ message: "Order not found or unauthorized" });
+
+    const order = orderRes.rows[0];
+    const receiptUrl = `/uploads/receipts/${req.file.filename}`;
+
+    const paymentRes = await pool.query(
+      `INSERT INTO fee_payments
+         (student_fee_id, amount, paid_on, note, receipt_url,
+          razorpay_order_id, razorpay_payment_id, status, recorded_by)
+       VALUES ($1, $2, NOW(), $3, $4, $5, $6, 'pending_approval', NULL)
+       RETURNING *`,
+      [
+        order.student_fee_id,
+        amount || order.amount,
+        note || null,
+        receiptUrl,
+        razorpay_order_id,
+        razorpay_payment_id,
+      ]
+    );
+
+    res.json({
+      success: true,
+      message: "Receipt uploaded. Awaiting admin approval.",
+      payment: paymentRes.rows[0],
+    });
+  } catch (err) {
+    console.error("uploadReceipt error:", err);
+    res.status(500).json({ message: "Failed to upload receipt" });
+  }
+};
+
+// ── GET /api/fees/admin/pending-approvals ─────────────────────────────────────
+const getPendingApprovals = async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT fp.*,
+              u.name  AS student_name,
+              u.email AS student_email,
+              s.class, s.section,
+              s.roll_number,
+              sf.total_fees,
+              sf.paid_amount AS already_paid
+       FROM fee_payments fp
+       JOIN student_fees sf ON fp.student_fee_id = sf.id
+       JOIN students s ON sf.student_id = s.id
+       JOIN users u ON s.user_id = u.id
+       WHERE fp.status = 'pending_approval'
+       ORDER BY fp.created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error("getPendingApprovals error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ── PATCH /api/fees/admin/approve/:paymentId ──────────────────────────────────
+const approvePayment = async (req, res) => {
+  const { paymentId } = req.params;
+  const { note } = req.body;
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const payRes = await client.query(
+      "SELECT * FROM fee_payments WHERE id = $1 FOR UPDATE",
+      [paymentId]
+    );
+    if (!payRes.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Payment not found" });
+    }
+    const payment = payRes.rows[0];
+    if (payment.status !== "pending_approval") {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: "Payment already processed" });
+    }
+
+    await client.query(
+      `UPDATE fee_payments
+       SET status = 'approved', recorded_by = $1, note = COALESCE($2, note), updated_at = NOW()
+       WHERE id = $3`,
+      [req.user.id, note || null, paymentId]
+    );
+
+    const sfRes = await client.query(
+      "SELECT * FROM student_fees WHERE id = $1 FOR UPDATE",
+      [payment.student_fee_id]
+    );
+    const sf = sfRes.rows[0];
+    const newPaid = Number(sf.paid_amount || 0) + Number(payment.amount);
+    const newTotal = Number(sf.total_fees || 0);
+
+    let newStatus;
+    if (newPaid >= newTotal) newStatus = "Paid";
+    else if (newPaid > 0) newStatus = "Partial";
+    else newStatus = sf.status;
+
+    await client.query(
+      `UPDATE student_fees
+       SET paid_amount = $1, status = $2, updated_at = NOW()
+       WHERE id = $3`,
+      [newPaid, newStatus, sf.id]
+    );
+
+    await client.query("COMMIT");
+    res.json({ success: true, message: "Payment approved", new_status: newStatus });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("approvePayment error:", err);
+    res.status(500).json({ message: "Server error" });
+  } finally {
+    client.release();
+  }
+};
+
+// ── PATCH /api/fees/admin/reject/:paymentId ───────────────────────────────────
+const rejectPayment = async (req, res) => {
+  const { paymentId } = req.params;
+  const { reason } = req.body;
+
+  try {
+    const result = await pool.query(
+      `UPDATE fee_payments
+       SET status = 'rejected', recorded_by = $1, note = $2, updated_at = NOW()
+       WHERE id = $3 AND status = 'pending_approval'
+       RETURNING *`,
+      [req.user.id, reason || "Rejected by admin", paymentId]
+    );
+    if (!result.rows.length)
+      return res.status(404).json({ message: "Payment not found or already processed" });
+
+    res.json({ success: true, message: "Payment rejected" });
+  } catch (err) {
+    console.error("rejectPayment error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ── POST /api/fees/admin/cash-payment ─────────────────────────────────────────
+// Admin records a cash payment for a student — auto-approved
+const recordCashPayment = async (req, res) => {
+  const { student_fee_id, amount, note } = req.body;
+  if (!student_fee_id || !amount || Number(amount) <= 0)
+    return res.status(400).json({ message: "student_fee_id and amount are required" });
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    const { rows: existing } = await client.query(
-      `SELECT sf.* FROM student_fees sf WHERE sf.id = $1`,
-      [req.params.id]
+    const sfRes = await client.query(
+      "SELECT * FROM student_fees WHERE id = $1 FOR UPDATE",
+      [student_fee_id]
     );
-    if (!existing.length) {
+    if (!sfRes.rows.length) {
       await client.query("ROLLBACK");
-      return res.status(404).json({ success: false, message: "Not found" });
+      return res.status(404).json({ message: "Fee record not found" });
+    }
+    const sf = sfRes.rows[0];
+
+    const remaining = Number(sf.total_fees || 0) - Number(sf.paid_amount || 0);
+    if (Number(amount) > remaining) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: `Amount exceeds remaining balance of ₹${remaining}` });
     }
 
-    const rec = existing[0];
-    const { paid_amount, status: explicitStatus, note, due_date, payment_amount, transport_fee } = req.body;
-
-    const newTransport = transport_fee !== undefined ? Number(transport_fee) : Number(rec.transport_fee || 0);
-    const tuition  = Number(rec.tuition_fee || 0);
-    const library  = Number(rec.library_fee || 0);
-    const other    = Number(rec.other_fee   || 0);
-    const newTotal = tuition + library + other + newTransport;
-
-    let newPaid = Number(rec.paid_amount || 0);
-    if (payment_amount && Number(payment_amount) > 0) {
-      newPaid = newPaid + Number(payment_amount);
-    } else if (paid_amount !== undefined) {
-      newPaid = Number(paid_amount);
-    }
-
-    const newDue      = due_date !== undefined ? due_date : rec.due_date;
-    const finalStatus = explicitStatus || resolveStatus(newPaid, newTotal, newDue);
-
-    const { rows } = await client.query(
-      `UPDATE student_fees SET
-         transport_fee   = $1,
-         total_fees      = $2,
-         paid_amount     = $3,
-         status          = $4,
-         note            = COALESCE($5, note),
-         due_date        = $6,
-         last_updated_by = $7,
-         updated_at      = NOW()
-       WHERE id = $8
+    // Insert payment as directly approved (cash — no receipt needed)
+    const payRes = await client.query(
+      `INSERT INTO fee_payments
+         (student_fee_id, amount, paid_on, note, status, recorded_by)
+       VALUES ($1, $2, NOW(), $3, 'approved', $4)
        RETURNING *`,
-      [newTransport, newTotal, newPaid, finalStatus, note ?? null, newDue, req.user.id, req.params.id]
+      [student_fee_id, Number(amount), note || "Cash payment", req.user.id]
     );
 
-    if (payment_amount && Number(payment_amount) > 0) {
+    // Update student_fees paid_amount and status
+    const newPaid = Number(sf.paid_amount || 0) + Number(amount);
+    const newTotal = Number(sf.total_fees || 0);
+    let newStatus;
+    if (newPaid >= newTotal) newStatus = "Paid";
+    else if (newPaid > 0) newStatus = "Partial";
+    else newStatus = sf.status;
+
+    await client.query(
+      `UPDATE student_fees
+       SET paid_amount = $1, status = $2, updated_at = NOW()
+       WHERE id = $3`,
+      [newPaid, newStatus, sf.id]
+    );
+
+    await client.query("COMMIT");
+    res.json({
+      success: true,
+      message: "Cash payment recorded successfully",
+      payment: payRes.rows[0],
+      new_status: newStatus,
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("recordCashPayment error:", err);
+    res.status(500).json({ message: "Server error" });
+  } finally {
+    client.release();
+  }
+};
+
+// ── GET /api/fees/students ─────────────────────────────────────────────────────
+const getStudentFeesList = async (req, res) => {
+  try {
+    const { class: cls, section, academic_year, limit = 200 } = req.query;
+    let query = `
+      SELECT sf.*,
+             u.name, u.email,
+             s.roll_number AS roll_no, s.roll_number,
+             s.section, s.class AS student_class
+      FROM student_fees sf
+      JOIN students s ON sf.student_id = s.id
+      JOIN users u ON s.user_id = u.id
+      WHERE 1=1`;
+    const params = [];
+
+    if (cls) { params.push(cls); query += ` AND (sf.class = $${params.length} OR s.class = $${params.length})`; }
+    if (section) { params.push(section); query += ` AND s.section = $${params.length}`; }
+    if (academic_year) { params.push(academic_year); query += ` AND sf.academic_year = $${params.length}`; }
+
+    params.push(Number(limit));
+    query += ` ORDER BY u.name ASC LIMIT $${params.length}`;
+
+    const result = await pool.query(query, params);
+    res.json({ data: result.rows });
+  } catch (err) {
+    console.error("getStudentFeesList error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ── PATCH /api/fees/students/:id ──────────────────────────────────────────────
+const updateStudentFee = async (req, res) => {
+  const { id } = req.params;
+  const { transport_fee } = req.body;
+  try {
+    const sf = await pool.query("SELECT * FROM student_fees WHERE id = $1", [id]);
+    if (!sf.rows.length) return res.status(404).json({ message: "Not found" });
+    const row = sf.rows[0];
+    const newTotal =
+      Number(row.tuition_fee || 0) +
+      Number(row.library_fee || 0) +
+      Number(row.other_fee || 0) +
+      Number(transport_fee || 0);
+
+    const result = await pool.query(
+      `UPDATE student_fees
+       SET transport_fee = $1, total_fees = $2, updated_at = NOW()
+       WHERE id = $3 RETURNING *`,
+      [transport_fee, newTotal, id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("updateStudentFee error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ── POST /api/fees/structures ─────────────────────────────────────────────────
+const setFeeStructure = async (req, res) => {
+  const { class: cls, section, academic_year, tuition_fee, library_fee, other_fee, due_date } =
+    req.body;
+  if (!cls || !tuition_fee)
+    return res.status(400).json({ message: "class and tuition_fee required" });
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    await client.query(
+      `INSERT INTO fee_structures (class, section, academic_year, tuition_fee, library_fee, other_fee, due_date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (class, section, academic_year)
+       DO UPDATE SET tuition_fee=$4, library_fee=$5, other_fee=$6, due_date=$7, updated_at=NOW()`,
+      [cls, section || null, academic_year || "2024-25", tuition_fee, library_fee || 0, other_fee || 0, due_date || null]
+    );
+
+    let studentQuery = "SELECT id FROM students WHERE class = $1";
+    const params = [cls];
+    if (section) { params.push(section); studentQuery += ` AND section = $${params.length}`; }
+    const students = await client.query(studentQuery, params);
+
+    const total = Number(tuition_fee) + Number(library_fee || 0) + Number(other_fee || 0);
+
+    for (const student of students.rows) {
       await client.query(
-        `INSERT INTO fee_payments (student_fee_id, amount, paid_on, recorded_by, note)
-         VALUES ($1, $2, CURRENT_DATE, $3, $4)`,
-        [req.params.id, Number(payment_amount), req.user.id, note || null]
+        `INSERT INTO student_fees
+           (student_id, class, academic_year, tuition_fee, library_fee, other_fee,
+            total_fees, paid_amount, status, due_date)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,
+           COALESCE((SELECT paid_amount FROM student_fees WHERE student_id=$1 AND academic_year=$3), 0),
+           COALESCE((SELECT status FROM student_fees WHERE student_id=$1 AND academic_year=$3), 'Pending'),
+           $8)
+         ON CONFLICT (student_id, academic_year)
+         DO UPDATE SET tuition_fee=$4, library_fee=$5, other_fee=$6,
+                       total_fees = $7 + COALESCE(student_fees.transport_fee,0),
+                       due_date=$8, updated_at=NOW()`,
+        [student.id, cls, academic_year || "2024-25", tuition_fee, library_fee || 0, other_fee || 0, total, due_date || null]
       );
     }
 
     await client.query("COMMIT");
-    res.json({ success: true, data: rows[0] });
+    res.json({ success: true, students_updated: students.rows.length });
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error("updateStudentFee:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    console.error("setFeeStructure error:", err);
+    res.status(500).json({ message: "Server error" });
   } finally {
     client.release();
   }
 };
 
-// ✅ NEW — was missing, caused crash at startup
-exports.deleteStudentFee = async (req, res) => {
-  const client = await pool.connect();
+// ── GET /api/fees/admin/all-payments ──────────────────────────────────────────
+const getAllPayments = async (req, res) => {
   try {
-    await client.query("BEGIN");
+    const { status, class: cls, limit = 100 } = req.query;
+    let query = `
+      SELECT fp.*,
+             u.name AS student_name,
+             s.class, s.section, s.roll_number,
+             sf.total_fees, sf.paid_amount
+      FROM fee_payments fp
+      JOIN student_fees sf ON fp.student_fee_id = sf.id
+      JOIN students s ON sf.student_id = s.id
+      JOIN users u ON s.user_id = u.id
+      WHERE 1=1`;
+    const params = [];
+    if (status) { params.push(status); query += ` AND fp.status = $${params.length}`; }
+    if (cls)    { params.push(cls);    query += ` AND s.class = $${params.length}`; }
+    params.push(Number(limit));
+    query += ` ORDER BY fp.created_at DESC LIMIT $${params.length}`;
 
-    // Delete payments first (FK constraint)
-    await client.query(
-      `DELETE FROM fee_payments WHERE student_fee_id = $1`,
-      [req.params.id]
-    );
-
-    const { rows } = await client.query(
-      `DELETE FROM student_fees WHERE id = $1 RETURNING id`,
-      [req.params.id]
-    );
-
-    if (!rows.length) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({ success: false, message: "Fee record not found" });
-    }
-
-    await client.query("COMMIT");
-    res.json({ success: true, message: "Fee record deleted", id: rows[0].id });
+    const result = await pool.query(query, params);
+    res.json(result.rows);
   } catch (err) {
-    await client.query("ROLLBACK");
-    console.error("deleteStudentFee:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  } finally {
-    client.release();
+    console.error("getAllPayments error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STATS
-// ─────────────────────────────────────────────────────────────────────────────
-
-exports.getStats = async (req, res) => {
-  try {
-    const { academic_year = "2024-25" } = req.query;
-
-    const { rows: summary } = await pool.query(
-      `SELECT
-         COALESCE(SUM(paid_amount), 0)                         AS total_collected,
-         COALESCE(SUM(total_fees - paid_amount), 0)            AS total_pending,
-         COUNT(*) FILTER (WHERE status = 'Paid')               AS paid_count,
-         COUNT(*) FILTER (WHERE status = 'Overdue')            AS overdue_count,
-         COUNT(*) FILTER (WHERE status = 'Partial')            AS partial_count,
-         COUNT(*) FILTER (WHERE status = 'Pending')            AS pending_count,
-         COUNT(*)                                              AS total_students
-       FROM student_fees WHERE academic_year = $1`,
-      [academic_year]
-    );
-
-    const { rows: monthly } = await pool.query(
-      `SELECT TO_CHAR(fp.paid_on,'Mon') AS month,
-              DATE_TRUNC('month', fp.paid_on) AS month_start,
-              COALESCE(SUM(fp.amount), 0) AS collected
-       FROM fee_payments fp
-       JOIN student_fees sf ON sf.id = fp.student_fee_id
-       WHERE sf.academic_year = $1
-         AND fp.paid_on >= NOW() - INTERVAL '6 months'
-       GROUP BY TO_CHAR(fp.paid_on,'Mon'), DATE_TRUNC('month', fp.paid_on)
-       ORDER BY DATE_TRUNC('month', fp.paid_on)`,
-      [academic_year]
-    );
-
-    res.json({ success: true, data: { summary: summary[0], monthly } });
-  } catch (err) {
-    console.error("getStats:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STUDENT SELF — GET /api/fees/student/fees
-// ─────────────────────────────────────────────────────────────────────────────
-
-exports.getMyFees = async (req, res) => {
-  try {
-    const { academic_year = "2024-25" } = req.query;
-
-    const { rows: studentRows } = await pool.query(
-      `SELECT id FROM students WHERE user_id = $1`,
-      [req.user.id]
-    );
-
-    if (!studentRows.length)
-      return res.status(404).json({ success: false, message: "Student record not found" });
-
-    const studentId = studentRows[0].id;
-
-    const { rows } = await pool.query(
-      `SELECT
-         sf.id, sf.academic_year, sf.status, sf.note,
-         sf.due_date, sf.paid_amount, sf.total_fees, sf.updated_at,
-         sf.tuition_fee, sf.library_fee, sf.other_fee, sf.transport_fee,
-         s.class, s.section, s.roll_number,
-         u.name
-       FROM student_fees sf
-       JOIN students s ON s.id = sf.student_id
-       JOIN users   u ON u.id = s.user_id
-       WHERE sf.student_id = $1 AND sf.academic_year = $2
-       ORDER BY sf.id DESC
-       LIMIT 1`,
-      [studentId, academic_year]
-    );
-
-    if (!rows.length)
-      return res.status(404).json({ success: false, message: "Fee record not found" });
-
-    const { rows: payments } = await pool.query(
-      `SELECT fp.amount, fp.paid_on, fp.note, u.name AS recorded_by_name
-       FROM fee_payments fp
-       LEFT JOIN users u ON u.id = fp.recorded_by
-       WHERE fp.student_fee_id = $1
-       ORDER BY fp.paid_on DESC`,
-      [rows[0].id]
-    );
-
-    res.json({ success: true, data: { ...rows[0], payments } });
-  } catch (err) {
-    console.error("getMyFees:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
+module.exports = {
+  getStudentFees,
+  createOrder,
+  verifyPayment,
+  uploadReceipt,
+  getPendingApprovals,
+  approvePayment,
+  rejectPayment,
+  recordCashPayment,
+  getStudentFeesList,
+  updateStudentFee,
+  setFeeStructure,
+  getAllPayments,
 };

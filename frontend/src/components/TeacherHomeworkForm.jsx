@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { BookOpen, Plus, Trash2, ChevronDown, Calendar, CheckCircle, AlertCircle, Clock } from "lucide-react";
+import { BookOpen, Plus, Trash2, ChevronDown, Calendar, CheckCircle, AlertCircle } from "lucide-react";
 
-// ── helpers ────────────────────────────────────────────────────────────────────
 const getToken = () => {
   if (typeof window === "undefined") return null;
   const m = document.cookie.match(/(^| )token=([^;]+)/);
@@ -27,55 +26,85 @@ function Skeleton({ h = "h-16" }) {
   return <div className={`${h} bg-gray-100 rounded-2xl animate-pulse`} />;
 }
 
-const STATUS_STYLE = {
-  pending:   { bg: "bg-amber-50",   text: "text-amber-700",   label: "Pending"   },
-  submitted: { bg: "bg-emerald-50", text: "text-emerald-700", label: "Submitted" },
-  late:      { bg: "bg-red-50",     text: "text-red-700",     label: "Late"      },
-  graded:    { bg: "bg-blue-50",    text: "text-blue-700",    label: "Graded"    },
-};
-
-// ── TeacherHomeworkForm ────────────────────────────────────────────────────────
 export default function TeacherHomeworkForm() {
-  // Form state
-  const [form, setForm]       = useState({
+  const [form, setForm] = useState({
     title: "", description: "", subject: "", class_id: "", section: "", due_date: "",
   });
   const [submitting, setSubmitting] = useState(false);
-  const [formMsg,    setFormMsg]    = useState(null); // { type: "success"|"error", text }
+  const [formMsg, setFormMsg] = useState(null);
 
-  // Classes list (fetched from teacher's assigned classes)
-  const [classes,  setClasses]  = useState([]);
+  // New: homework-classes endpoint se data
+  const [homeworkClasses, setHomeworkClasses] = useState([]);  // [{class_id, grade, section, subject?}]
   const [sections, setSections] = useState([]);
 
-  // Homework list
   const [homeworkList, setHomeworkList] = useState([]);
-  const [listLoading,  setListLoading]  = useState(true);
-  const [listError,    setListError]    = useState("");
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState("");
 
-  // ── fetch teacher's classes ──
+  // ── Fetch teacher's assignable classes (works for both types) ──
   useEffect(() => {
-    apiFetch("/teacher/classes")
-      .then((data) => setClasses(data || []))
-      .catch(() => {});
+    apiFetch("/teacher/homework-classes")
+      .then((data) => setHomeworkClasses(data || []))
+      .catch(() => setHomeworkClasses([]));
   }, []);
 
-  // ── derive sections when class changes ──
+  // ── Derive unique grades for dropdown ──
+  const uniqueGrades = [...new Map(
+    homeworkClasses.map(c => [c.grade, c])
+  ).values()];
+
+  // ── When class (grade) changes, derive sections ──
   useEffect(() => {
     if (!form.class_id) { setSections([]); return; }
-    const cls = classes.find((c) => String(c.id) === String(form.class_id));
-    // If your API returns sections as array on each class object use cls.sections,
-    // otherwise derive from the classes list (multiple entries per grade).
-    const secs = cls?.sections
-      ? cls.sections
-      : classes
-          .filter((c) => String(c.grade) === String(cls?.grade))
-          .map((c) => c.section)
-          .filter(Boolean);
-    setSections([...new Set(secs)]);
-    setForm((f) => ({ ...f, section: "" }));
-  }, [form.class_id, classes]);
 
-  // ── fetch existing homework ──
+    // form.class_id stores the selected class_id (numeric id)
+    // Find which grade this class_id belongs to
+    const selectedEntry = homeworkClasses.find(c => String(c.class_id) === String(form.class_id));
+    if (!selectedEntry) { setSections([]); return; }
+
+    // Get all sections for this grade
+    const secs = homeworkClasses
+      .filter(c => c.grade === selectedEntry.grade)
+      .map(c => c.section);
+
+    setSections([...new Set(secs)]);
+
+    // Auto-fill subject if subject teacher has only one subject for this class
+    if (selectedEntry.subject && !form.subject) {
+      setForm(f => ({ ...f, section: "", subject: selectedEntry.subject }));
+    } else {
+      setForm(f => ({ ...f, section: "" }));
+    }
+  }, [form.class_id, homeworkClasses]);
+
+  // ── When section changes, update class_id to the exact match ──
+  const handleSectionChange = (section) => {
+    // Find the entry that matches both the currently selected grade AND the chosen section
+    const currentEntry = homeworkClasses.find(c => String(c.class_id) === String(form.class_id));
+    if (!currentEntry) { setForm(f => ({ ...f, section })); return; }
+
+    const exactMatch = homeworkClasses.find(
+      c => c.grade === currentEntry.grade && c.section === section
+    );
+    if (exactMatch) {
+      setForm(f => ({
+        ...f,
+        section,
+        class_id: String(exactMatch.class_id),
+        // Auto-fill subject if available
+        subject: exactMatch.subject || f.subject,
+      }));
+    } else {
+      setForm(f => ({ ...f, section }));
+    }
+  };
+
+  // ── Handle grade/class selection ──
+  const handleClassChange = (class_id) => {
+    setForm(f => ({ ...f, class_id, section: "", subject: "" }));
+  };
+
+  // ── Fetch existing homework ──
   const loadHomework = useCallback(async () => {
     setListLoading(true);
     setListError("");
@@ -91,7 +120,7 @@ export default function TeacherHomeworkForm() {
 
   useEffect(() => { loadHomework(); }, [loadHomework]);
 
-  // ── submit ──
+  // ── Submit ──
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormMsg(null);
@@ -115,7 +144,7 @@ export default function TeacherHomeworkForm() {
     }
   };
 
-  // ── delete ──
+  // ── Delete ──
   const handleDelete = async (id) => {
     if (!confirm("Delete this homework?")) return;
     try {
@@ -128,12 +157,14 @@ export default function TeacherHomeworkForm() {
 
   const today = new Date().toISOString().split("T")[0];
 
+  // ── Selected grade label for display ──
+  const selectedEntry = homeworkClasses.find(c => String(c.class_id) === String(form.class_id));
+
   return (
     <div className="space-y-6">
 
       {/* ── Assign Homework Form ── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        {/* Header */}
         <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
             <Plus size={15} className="text-emerald-600" />
@@ -141,7 +172,6 @@ export default function TeacherHomeworkForm() {
           <h2 className="font-bold text-gray-900 text-sm">Assign Homework</h2>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           {/* Title */}
           <div>
@@ -152,7 +182,7 @@ export default function TeacherHomeworkForm() {
               type="text"
               placeholder="e.g. Chapter 5 — Questions 1–10"
               value={form.title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+              onChange={(e) => setForm(f => ({ ...f, title: e.target.value }))}
               className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 transition placeholder-gray-300"
             />
           </div>
@@ -166,7 +196,7 @@ export default function TeacherHomeworkForm() {
               type="text"
               placeholder="e.g. Mathematics"
               value={form.subject}
-              onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}
+              onChange={(e) => setForm(f => ({ ...f, subject: e.target.value }))}
               className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 transition placeholder-gray-300"
             />
           </div>
@@ -180,17 +210,25 @@ export default function TeacherHomeworkForm() {
               <div className="relative">
                 <select
                   value={form.class_id}
-                  onChange={(e) => setForm((f) => ({ ...f, class_id: e.target.value }))}
+                  onChange={(e) => handleClassChange(e.target.value)}
                   className="w-full appearance-none px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 transition bg-white pr-8"
                 >
-                  <option value="">Select class</option>
-                  {/* Deduplicate by grade */}
-                  {[...new Map(classes.map((c) => [c.grade, c])).values()].map((c) => (
-                    <option key={c.id} value={c.id}>Class {c.grade}</option>
+                  <option value="">
+                    {homeworkClasses.length === 0 ? "No classes assigned" : "Select class"}
+                  </option>
+                  {uniqueGrades.map((c) => (
+                    <option key={c.class_id} value={c.class_id}>
+                      Class {c.grade}
+                    </option>
                   ))}
                 </select>
                 <ChevronDown size={14} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
               </div>
+              {homeworkClasses.length === 0 && (
+                <p className="text-[11px] text-amber-600 mt-1">
+                  No classes found. Contact admin to assign classes/subjects.
+                </p>
+              )}
             </div>
 
             <div>
@@ -200,8 +238,8 @@ export default function TeacherHomeworkForm() {
               <div className="relative">
                 <select
                   value={form.section}
-                  onChange={(e) => setForm((f) => ({ ...f, section: e.target.value }))}
-                  disabled={!form.class_id}
+                  onChange={(e) => handleSectionChange(e.target.value)}
+                  disabled={!form.class_id || sections.length === 0}
                   className="w-full appearance-none px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 transition bg-white pr-8 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="">Select section</option>
@@ -219,15 +257,13 @@ export default function TeacherHomeworkForm() {
             <label className="block text-xs font-semibold text-gray-500 mb-1.5">
               Due Date <span className="text-red-500">*</span>
             </label>
-            <div className="relative">
-              <input
-                type="date"
-                min={today}
-                value={form.due_date}
-                onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))}
-                className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 transition"
-              />
-            </div>
+            <input
+              type="date"
+              min={today}
+              value={form.due_date}
+              onChange={(e) => setForm(f => ({ ...f, due_date: e.target.value }))}
+              className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 transition"
+            />
           </div>
 
           {/* Description */}
@@ -237,22 +273,21 @@ export default function TeacherHomeworkForm() {
               rows={3}
               placeholder="Additional instructions or details…"
               value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+              onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))}
               className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 transition placeholder-gray-300 resize-none"
             />
           </div>
 
           {/* Feedback */}
           {formMsg && (
-            <div className={`flex items-center gap-2 text-sm px-4 py-3 rounded-xl border
-              ${formMsg.type === "success"
+            <div className={`flex items-center gap-2 text-sm px-4 py-3 rounded-xl border ${
+              formMsg.type === "success"
                 ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                 : "bg-red-50 text-red-600 border-red-200"
-              }`}>
+            }`}>
               {formMsg.type === "success"
                 ? <CheckCircle size={15} className="flex-shrink-0" />
-                : <AlertCircle size={15} className="flex-shrink-0" />
-              }
+                : <AlertCircle size={15} className="flex-shrink-0" />}
               {formMsg.text}
             </div>
           )}
@@ -312,12 +347,9 @@ export default function TeacherHomeworkForm() {
                 return (
                   <div key={hw.id} className="rounded-xl border border-gray-100 bg-white hover:border-blue-200 hover:bg-blue-50/20 transition-all duration-200 overflow-hidden">
                     <div className="px-4 py-3.5 flex items-start gap-3">
-                      {/* Icon */}
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5
-                        ${isOverdue ? "bg-red-100" : "bg-emerald-100"}`}>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${isOverdue ? "bg-red-100" : "bg-emerald-100"}`}>
                         <BookOpen size={14} className={isOverdue ? "text-red-600" : "text-emerald-600"} />
                       </div>
-
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap mb-1">
                           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
@@ -343,8 +375,6 @@ export default function TeacherHomeworkForm() {
                           </p>
                         </div>
                       </div>
-
-                      {/* Delete */}
                       <button
                         onClick={() => handleDelete(hw.id)}
                         className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center flex-shrink-0 transition-colors"
