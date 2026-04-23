@@ -1,3 +1,4 @@
+const pool     = require("../config/db");
 const express  = require("express");
 const router   = express.Router();
 const path     = require("path");
@@ -63,6 +64,28 @@ router.put   ("/students/:id",         updateStudent);
 router.delete("/students/:id",         deleteStudent);
 router.post  ("/students/:id/photo",   studentUpload.single("photo"), uploadStudentPhoto);
 router.get("/teachers/check-class", checkTeacherClassAssignment);
+// Attendance trend for last N days
+router.get("/attendance/trend", async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const { rows } = await pool.query(`
+      SELECT
+        TO_CHAR(date, 'DD Mon') AS date,
+        ROUND(
+          COUNT(*) FILTER (WHERE status = 'Present') * 100.0 / NULLIF(COUNT(*), 0),
+          1
+        ) AS rate
+      FROM attendance
+      WHERE date >= CURRENT_DATE - ($1 * INTERVAL '1 day')
+      GROUP BY date
+      ORDER BY date
+    `, [days]);
+    res.json({ data: rows });
+  } catch (err) {
+    console.error("attendance/trend error:", err.message);
+    res.status(500).json({ message: err.message });
+  }
+});
 
 // ── Teachers
 router.get   ("/teachers/meta",        getTeacherMeta);

@@ -8,6 +8,7 @@ router.use(protect);
 // ── Attendance ────────────────────────────────────────────────────────────────
 router.get ("/status",  authorizeRoles("teacher", "admin"), ctrl.getStatus);
 router.get ("/records", authorizeRoles("teacher", "admin"), ctrl.getRecords);
+router.get("/export", authorizeRoles("teacher", "admin"), ctrl.exportAttendanceExcel);
 router.post("/mark",    authorizeRoles("teacher", "admin"), ctrl.markAttendance);
 router.put ("/update",  authorizeRoles("teacher", "admin"), ctrl.updateAttendance);
 

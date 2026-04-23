@@ -8,99 +8,67 @@ const getDashboard = async (req, res) => {
       pool.query("SELECT COUNT(*) FROM students"),
       pool.query("SELECT COUNT(*) FROM teachers"),
       pool.query("SELECT COUNT(*) FROM classes"),
-      pool.query("SELECT COALESCE(SUM(amount),0) as total FROM fees WHERE status = 'Paid' AND EXTRACT(MONTH FROM paid_on) = EXTRACT(MONTH FROM NOW())"),
+      // ✅ FIXED: fee_payments table use ho rahi hai
+      pool.query(`
+        SELECT COALESCE(SUM(amount), 0) AS total
+        FROM fee_payments
+        WHERE DATE_TRUNC('month', paid_on) = DATE_TRUNC('month', CURRENT_DATE)
+      `),
     ]);
 
     const attendanceResult = await pool.query(`
-      SELECT 
-        ROUND(100.0 * SUM(CASE WHEN status = 'Present' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) as rate
+      SELECT
+        ROUND(100.0 * SUM(CASE WHEN status = 'Present' THEN 1 ELSE 0 END)
+        / NULLIF(COUNT(*), 0), 1) AS rate
       FROM attendance
       WHERE date >= NOW() - INTERVAL '30 days'
     `);
 
+    // ✅ Low attendance students (<75%)
+    const lowAttResult = await pool.query(`
+      SELECT COUNT(*) FROM (
+        SELECT student_id,
+          ROUND(COUNT(*) FILTER (WHERE status = 'Present') * 100.0 / NULLIF(COUNT(*), 0), 1) AS pct
+        FROM attendance
+        GROUP BY student_id
+        HAVING ROUND(COUNT(*) FILTER (WHERE status = 'Present') * 100.0 / NULLIF(COUNT(*), 0), 1) < 75
+      ) sub
+    `);
+
+    // ✅ Upcoming holidays (crash nahi hoga agar table nahi hai)
+    const holidayResult = await pool.query(`
+      SELECT id, title, date FROM holidays
+      WHERE date >= CURRENT_DATE
+      ORDER BY date ASC
+      LIMIT 3
+    `).catch(() => ({ rows: [] }));
+
+    // ✅ Today's new admissions
+    const newAdmissionsResult = await pool.query(`
+      SELECT COUNT(*) FROM students
+      WHERE DATE(created_at) = CURRENT_DATE
+    `);
+
     res.json({
-      totalStudents: parseInt(students.rows[0].count),
-      totalTeachers: parseInt(teachers.rows[0].count),
-      totalClasses: parseInt(classes.rows[0].count),
-      monthlyRevenue: parseFloat(revenue.rows[0].total),
-      attendanceRate: parseFloat(attendanceResult.rows[0].rate) || 0,
+      totalStudents:      parseInt(students.rows[0].count),
+      totalTeachers:      parseInt(teachers.rows[0].count),
+      totalClasses:       parseInt(classes.rows[0].count),
+      monthlyRevenue:     parseFloat(revenue.rows[0].total),
+      attendanceRate:     parseFloat(attendanceResult.rows[0].rate) || 0,
+      lowAttendanceCount: parseInt(lowAttResult.rows[0].count) || 0,
+      upcomingHolidays:   holidayResult.rows,
+      newAdmissionsToday: parseInt(newAdmissionsResult.rows[0].count) || 0,
     });
   } catch (err) {
-    console.error(err);
+    console.error("getDashboard error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// GET /api/admin/students
-// const getAllStudents = async (req, res) => {
-//   try {
-//     const result = await pool.query(`
-//       SELECT s.*, u.name, u.email, u.is_active
-//       FROM students s
-//       JOIN users u ON s.user_id = u.id
-//       ORDER BY s.created_at DESC
-//     `);
-//     res.json(result.rows);
-//   } catch (err) {
-//     res.status(500).json({ message: "Server error" });
-//   }
-// };
-
-// POST /api/admin/students
-// const createStudent = async (req, res) => {
-//   const { name, email, password, roll_number, class: cls, section, phone, address, date_of_birth, gender, guardian_name, guardian_phone } = req.body;
-//   try {
-//     const hashed = await bcrypt.hash(password, 10);
-//     const userRes = await pool.query(
-//       "INSERT INTO users (name, email, password, role) VALUES ($1,$2,$3,'student') RETURNING id",
-//       [name, email, hashed]
-//     );
-//     const userId = userRes.rows[0].id;
-//     const studentRes = await pool.query(
-//       `INSERT INTO students (user_id, roll_number, class, section, phone, address, date_of_birth, gender, guardian_name, guardian_phone)
-//        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-//       [userId, roll_number, cls, section, phone, address, date_of_birth, gender, guardian_name, guardian_phone]
-//     );
-//     res.status(201).json({ message: "Student created", student: studentRes.rows[0] });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ message: "Server error" });
-//   }
-// };
-
-// PUT /api/admin/students/:id
-// const updateStudent = async (req, res) => {
-//   const { id } = req.params;
-//   const { class: cls, section, phone, address, fee_status, guardian_name, guardian_phone } = req.body;
-//   try {
-//     const result = await pool.query(
-//       `UPDATE students SET class=$1, section=$2, phone=$3, address=$4, fee_status=$5, guardian_name=$6, guardian_phone=$7
-//        WHERE id=$8 RETURNING *`,
-//       [cls, section, phone, address, fee_status, guardian_name, guardian_phone, id]
-//     );
-//     res.json(result.rows[0]);
-//   } catch (err) {
-//     res.status(500).json({ message: "Server error" });
-//   }
-// };
-
-// DELETE /api/admin/students/:id
-// const deleteStudent = async (req, res) => {
-//   const { id } = req.params;
-//   try {
-//     const student = await pool.query("SELECT user_id FROM students WHERE id=$1", [id]);
-//     if (student.rows.length === 0) return res.status(404).json({ message: "Student not found" });
-//     await pool.query("DELETE FROM users WHERE id=$1", [student.rows[0].user_id]);
-//     res.json({ message: "Student deleted" });
-//   } catch (err) {
-//     res.status(500).json({ message: "Server error" });
-//   }
-// };
-
 async function generateStudentId() {
   const year = new Date().getFullYear();
   const prefix = `STU-${year}-`;
- 
+
   const result = await pool.query(
     `SELECT student_id FROM students
      WHERE student_id LIKE $1
@@ -108,45 +76,17 @@ async function generateStudentId() {
      LIMIT 1`,
     [`${prefix}%`]
   );
- 
+
   let seq = 1;
   if (result.rows.length > 0) {
-    const last = result.rows[0].student_id; // e.g. "STU-2024-0042"
+    const last = result.rows[0].student_id;
     const parts = last.split("-");
     seq = parseInt(parts[parts.length - 1], 10) + 1;
   }
- 
+
   return `${prefix}${String(seq).padStart(4, "0")}`;
 }
- 
- 
-// ── GET /api/admin/students/meta ──────────────────────────────────────────────
-// Returns all classes with their assigned teacher name — used to populate the
-// "Add Student" dropdown so section + class teacher auto-fill on selection.
-// const getStudentMeta = async (req, res) => {
-//   try {
-//     const result = await pool.query(
-//       `SELECT
-//          c.id,
-//          c.class_name,
-//          c.section,
-//          c.room_no,
-//          u.name  AS teacher_name,
-//          t.id    AS teacher_id
-//        FROM classes c
-//        LEFT JOIN teachers t ON c.teacher_id = t.id
-//        LEFT JOIN users    u ON t.user_id    = u.id
-//        ORDER BY c.class_name, c.section`
-//     );
-//     res.json(result.rows);
-//   } catch (err) {
-//     console.error("getStudentMeta error:", err);
-//     res.status(500).json({ message: "Server error" });
-//   }
-// };
- 
- 
-// ── GET /api/admin/students ───────────────────────────────────────────────────
+
 // ── GET /api/admin/students ───────────────────────────────────────────────────
 const getAllStudents = async (req, res) => {
   try {
@@ -178,13 +118,11 @@ const getAllStudents = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
- 
- 
-// ── POST /api/admin/students ──────────────────────────────────────────────────
+
 // ── POST /api/admin/students ──────────────────────────────────────────────────
 const createStudent = async (req, res) => {
   const {
-    student_id,          // optional — auto-generated if blank
+    student_id,
     name,
     email,
     password,
@@ -200,18 +138,17 @@ const createStudent = async (req, res) => {
     guardian_name,
     guardian_phone,
   } = req.body;
- 
+
   if (!name || !email || !password || !roll_number || !class_id) {
     return res.status(400).json({
       message: "name, email, password, roll_number, and class_id are required",
     });
   }
- 
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
- 
-    // 1. Create auth user
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const userResult = await client.query(
       `INSERT INTO users (name, email, password, role, is_active)
@@ -220,11 +157,9 @@ const createStudent = async (req, res) => {
       [name, email, hashedPassword]
     );
     const userId = userResult.rows[0].id;
- 
-    // 2. Generate or use provided student ID
+
     const finalStudentId = student_id?.trim() || (await generateStudentId());
- 
-    // 3. Create student record - REMOVED is_active from here
+
     const studentResult = await client.query(
       `INSERT INTO students
          (user_id, student_id, roll_number, class_id, class, section,
@@ -251,9 +186,9 @@ const createStudent = async (req, res) => {
         guardian_phone,
       ]
     );
- 
+
     await client.query("COMMIT");
- 
+
     res.status(201).json({
       ...studentResult.rows[0],
       name,
@@ -262,9 +197,8 @@ const createStudent = async (req, res) => {
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("createStudent error:", err);
- 
+
     if (err.code === "23505") {
-      // Unique constraint — could be email or student_id
       if (err.constraint?.includes("email")) {
         return res.status(409).json({ message: "A user with this email already exists." });
       }
@@ -273,15 +207,13 @@ const createStudent = async (req, res) => {
       }
       return res.status(409).json({ message: "Duplicate entry — please check email or Student ID." });
     }
- 
+
     res.status(500).json({ message: "Server error" });
   } finally {
     client.release();
   }
 };
- 
- 
-// ── PUT /api/admin/students/:id ───────────────────────────────────────────────
+
 // ── PUT /api/admin/students/:id ───────────────────────────────────────────────
 const updateStudent = async (req, res) => {
   const { id } = req.params;
@@ -296,7 +228,7 @@ const updateStudent = async (req, res) => {
     guardian_name,
     guardian_phone,
   } = req.body;
- 
+
   try {
     const result = await pool.query(
       `UPDATE students SET
@@ -314,26 +246,25 @@ const updateStudent = async (req, res) => {
        RETURNING *`,
       [class_id, className, section, class_teacher, phone, address, fee_status, guardian_name, guardian_phone, id]
     );
- 
+
     if (result.rows.length === 0) {
       return res.status(404).json({ message: "Student not found" });
     }
- 
+
     res.json(result.rows[0]);
   } catch (err) {
     console.error("updateStudent error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
- 
+
 // ── DELETE /api/admin/students/:id ───────────────────────────────────────────
 const deleteStudent = async (req, res) => {
   const { id } = req.params;
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
- 
-    // Get the user_id before deleting the student
+
     const studentRow = await client.query(
       "SELECT user_id FROM students WHERE id = $1",
       [id]
@@ -343,11 +274,10 @@ const deleteStudent = async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
     const userId = studentRow.rows[0].user_id;
- 
-    // Delete student first (FK constraint), then user
+
     await client.query("DELETE FROM students WHERE id = $1", [id]);
     await client.query("DELETE FROM users WHERE id = $1", [userId]);
- 
+
     await client.query("COMMIT");
     res.json({ message: "Student deleted successfully" });
   } catch (err) {
@@ -358,11 +288,12 @@ const deleteStudent = async (req, res) => {
     client.release();
   }
 };
-// adminStudentController.js (add this function)
+
+// ── GET /api/admin/students/meta ──────────────────────────────────────────────
 const getStudentMeta = async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT 
+      SELECT
         c.id,
         c.class_name,
         c.section,
@@ -379,7 +310,7 @@ const getStudentMeta = async (req, res) => {
   }
 };
 
-// In your admin student controller — update student to save photo_url
+// ── POST /api/admin/students/:id/photo ───────────────────────────────────────
 const uploadStudentPhoto = async (req, res) => {
   try {
     const { id } = req.params;
@@ -392,12 +323,17 @@ const uploadStudentPhoto = async (req, res) => {
     );
     res.json({ photo_url: photoUrl });
   } catch (err) {
-    console.error("uploadStudentPhoto error:", err); // ← add this
-    res.status(500).json({ message: err.message });  
-   
+    console.error("uploadStudentPhoto error:", err);
+    res.status(500).json({ message: err.message });
   }
 };
- 
 
-
-module.exports = { getDashboard, getAllStudents, createStudent, updateStudent, deleteStudent,  getStudentMeta,  uploadStudentPhoto };
+module.exports = {
+  getDashboard,
+  getAllStudents,
+  createStudent,
+  updateStudent,
+  deleteStudent,
+  getStudentMeta,
+  uploadStudentPhoto,
+};
