@@ -13,6 +13,7 @@ const adminNoticesRoutes   = require("./routes/admin/notices");
 const studentNoticesRoutes = require("./routes/student/notices");
 const teacherNoticesRoutes = require("./routes/teacher/notices");
 const homeworkRoutes = require("./routes/homeworkRoutes");
+const attendanceRoutes = require("./routes/attendanceRoutes");
 
 const app = express();
 
@@ -24,6 +25,9 @@ app.get("/", (req, res) => res.json({ message: "EduERP API running ✅" }));
 app.use("/api/admin/notices",   adminNoticesRoutes);
 app.use("/api/student/notices", studentNoticesRoutes);
 app.use("/api/teacher/notices", teacherNoticesRoutes);
+app.use("/api/attendance", attendanceRoutes);
+
+
 
 app.use("/api/auth",    authRoutes);
 app.use("/api/admin",   adminRoutes);

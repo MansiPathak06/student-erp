@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import StudentSidebar from "@/components/StudentSidebar";
 import StudentFeeCard from "@/components/StudentFeeCard";
 import StudentHomeworkList from "@/components/StudentHomeworkList";
@@ -8,7 +8,8 @@ import { apiFetch } from "@/lib/api";
 import {
   GraduationCap, BookOpen, Users, CalendarDays,
   User, Phone, Mail, MapPin, Calendar,
-  Bell, Pin, AlertCircle,
+  Bell, Pin, AlertCircle, ChevronLeft, ChevronRight,
+  CheckCircle, XCircle, Clock, PartyPopper,
 } from "lucide-react";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -18,6 +19,11 @@ function getInitials(name = "") {
   if (parts.length === 1) return parts[0][0].toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
+
+const MONTHS = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
 function StatCard({ icon: Icon, label, value, color }) {
@@ -70,7 +76,7 @@ function ErrorCard({ message, onRetry }) {
   );
 }
 
-// ─── NoticesSection ───────────────────────────────────────────────────────────
+// ─── Notices Section ──────────────────────────────────────────────────────────
 const CATEGORY_STYLE = {
   General:  { bg: "bg-gray-100",   text: "text-gray-600"    },
   Academic: { bg: "bg-blue-50",    text: "text-blue-700"    },
@@ -87,42 +93,32 @@ function NoticesSection() {
   const [expanded, setExpanded] = useState(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
       const res = await apiFetch("/student/notices");
       setData(res || []);
-    } catch {
-      setError("Failed to load notices");
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError("Failed to load notices"); }
+    finally  { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      {/* Header */}
       <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
         <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
           <Bell size={15} className="text-amber-600" />
         </div>
         <h2 className="font-bold text-gray-900 text-sm">Notices</h2>
-        {data && data.length > 0 && (
+        {data?.length > 0 && (
           <span className="ml-auto text-xs bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded-full">
             {data.length}
           </span>
         )}
       </div>
-
-      {/* Body */}
       <div className="p-4">
-        {loading ? (
-          <Spinner />
-        ) : error ? (
-          <ErrorCard message={error} onRetry={load} />
-        ) : !data || data.length === 0 ? (
+        {loading ? <Spinner /> : error ? <ErrorCard message={error} onRetry={load} /> :
+         !data?.length ? (
           <div className="text-center py-8 text-gray-400">
             <Bell size={24} className="mx-auto mb-2 opacity-40" />
             <p className="text-sm">No notices for you right now</p>
@@ -130,74 +126,40 @@ function NoticesSection() {
         ) : (
           <div className="space-y-2">
             {data.map(n => {
-              const cat    = CATEGORY_STYLE[n.category] ?? CATEGORY_STYLE.General;
+              const cat = CATEGORY_STYLE[n.category] ?? CATEGORY_STYLE.General;
               const isOpen = expanded === n.id;
               const isUrgent = n.priority === "Urgent";
-
               return (
-                <div
-                  key={n.id}
-                  className={`rounded-xl border transition-all duration-200 overflow-hidden
-                    ${isUrgent
-                      ? "border-red-200 bg-red-50/30"
-                      : "border-gray-100 bg-white hover:border-blue-200 hover:bg-blue-50/20"
-                    }`}
-                >
-                  {/* Row button */}
-                  <button
-                    onClick={() => setExpanded(isOpen ? null : n.id)}
-                    className="w-full flex items-start gap-3 px-4 py-3.5 text-left"
-                  >
-                    {/* Left icon */}
+                <div key={n.id} className={`rounded-xl border transition-all duration-200 overflow-hidden
+                  ${isUrgent ? "border-red-200 bg-red-50/30" : "border-gray-100 bg-white hover:border-blue-200 hover:bg-blue-50/20"}`}>
+                  <button onClick={() => setExpanded(isOpen ? null : n.id)}
+                    className="w-full flex items-start gap-3 px-4 py-3.5 text-left">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5
                       ${isUrgent ? "bg-red-100" : n.is_pinned ? "bg-blue-100" : "bg-gray-100"}`}>
-                      {isUrgent
-                        ? <AlertCircle size={15} className="text-red-600" />
-                        : n.is_pinned
-                        ? <Pin size={15} className="text-blue-600" />
-                        : <Bell size={15} className="text-gray-500" />
-                      }
+                      {isUrgent ? <AlertCircle size={15} className="text-red-600" /> :
+                       n.is_pinned ? <Pin size={15} className="text-blue-600" /> :
+                       <Bell size={15} className="text-gray-500" />}
                     </div>
-
                     <div className="flex-1 min-w-0">
-                      {/* Badges */}
                       <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                        {n.is_pinned && (
-                          <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full font-semibold">
-                            📌 Pinned
-                          </span>
-                        )}
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${cat.bg} ${cat.text}`}>
-                          {n.category}
-                        </span>
+                        {n.is_pinned && <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full font-semibold">📌 Pinned</span>}
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${cat.bg} ${cat.text}`}>{n.category}</span>
                         {n.priority && n.priority !== "Normal" && (
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full
-                            ${isUrgent ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isUrgent ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
                             {n.priority}
                           </span>
                         )}
                       </div>
-
                       <p className="text-sm font-semibold text-gray-900 leading-tight">{n.title}</p>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        {n.author ?? "Admin"} ·{" "}
-                        {new Date(n.created_at).toLocaleDateString("en-IN", {
-                          day: "2-digit", month: "short", year: "numeric",
-                        })}
+                        {n.author ?? "Admin"} · {new Date(n.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
                       </p>
                     </div>
-
-                    {/* Chevron */}
-                    <svg
-                      width="14" height="14" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="2"
-                      className={`flex-shrink-0 mt-1 text-gray-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
-                    >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                      className={`flex-shrink-0 mt-1 text-gray-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}>
                       <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </button>
-
-                  {/* Expanded content */}
                   {isOpen && (
                     <div className="px-4 pb-4 pt-0 border-t border-gray-100">
                       <div className="mt-3 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap bg-gray-50 rounded-xl p-3 border border-gray-100">
@@ -215,6 +177,233 @@ function NoticesSection() {
   );
 }
 
+// ─── Attendance Calendar ──────────────────────────────────────────────────────
+function AttendanceCalendar() {
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year,  setYear]  = useState(now.getFullYear());
+  const [data,  setData]  = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const res = await apiFetch(`/student/attendance?month=${month}&year=${year}`);
+      setData(res);
+    } catch (err) {
+      setError(err.message || "Failed to load attendance");
+    } finally {
+      setLoading(false);
+    }
+  }, [month, year]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Build calendar days
+  const calendarDays = useMemo(() => {
+    const firstDay = new Date(year, month - 1, 1).getDay(); // 0=Sun
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const days = [];
+    // Empty cells before first day
+    for (let i = 0; i < firstDay; i++) days.push(null);
+    for (let d = 1; d <= daysInMonth; d++) days.push(d);
+    return days;
+  }, [month, year]);
+
+  // Map date string → status
+  const attMap = useMemo(() => {
+    if (!data?.attendance) return {};
+    const map = {};
+    data.attendance.forEach(a => {
+      const d = new Date(a.date).getDate();
+      map[d] = a.status;
+    });
+    return map;
+  }, [data]);
+
+  // Map date → holiday title
+  const holidayMap = useMemo(() => {
+    if (!data?.holidays) return {};
+    const map = {};
+    data.holidays.forEach(h => {
+      const d = new Date(h.date).getDate();
+      map[d] = h.title;
+    });
+    return map;
+  }, [data]);
+
+  const prevMonth = () => {
+    if (month === 1) { setMonth(12); setYear(y => y - 1); }
+    else setMonth(m => m - 1);
+  };
+  const nextMonth = () => {
+    const n = new Date();
+    if (year > n.getFullYear() || (year === n.getFullYear() && month >= n.getMonth() + 1)) return;
+    if (month === 12) { setMonth(1); setYear(y => y + 1); }
+    else setMonth(m => m + 1);
+  };
+
+  const today = new Date();
+  const isCurrentMonth = month === today.getMonth() + 1 && year === today.getFullYear();
+  const isMaxMonth = isCurrentMonth;
+
+  function getDayStyle(day) {
+    if (!day) return "";
+    const isToday = isCurrentMonth && day === today.getDate();
+    const status  = attMap[day];
+    const holiday = holidayMap[day];
+
+    if (holiday) return "bg-purple-100 text-purple-700 ring-1 ring-purple-300";
+    if (status === "Present") return `bg-green-100 text-green-700 ring-1 ring-green-300 ${isToday ? "ring-2 ring-green-500" : ""}`;
+    if (status === "Absent")  return `bg-red-100 text-red-700 ring-1 ring-red-300 ${isToday ? "ring-2 ring-red-500" : ""}`;
+    if (status === "Leave")   return `bg-amber-100 text-amber-700 ring-1 ring-amber-300 ${isToday ? "ring-2 ring-amber-500" : ""}`;
+    if (isToday) return "bg-violet-600 text-white ring-2 ring-violet-400 font-bold";
+    return "bg-gray-50 text-gray-500";
+  }
+
+  // Upcoming holidays (from current month data, future dates only)
+  const upcomingHolidays = useMemo(() => {
+    if (!data?.holidays) return [];
+    const todayStr = today.toISOString().split("T")[0];
+    return data.holidays
+      .filter(h => h.date >= todayStr)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 4);
+  }, [data]);
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
+        <div className="w-7 h-7 rounded-lg bg-violet-50 flex items-center justify-center flex-shrink-0">
+          <CalendarDays size={15} className="text-violet-600" />
+        </div>
+        <h2 className="font-bold text-gray-900 text-sm">Attendance Calendar</h2>
+        {data?.summary && (
+          <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded-full ${
+            data.summary.percent >= 75 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+          }`}>
+            {data.summary.percent}%
+          </span>
+        )}
+      </div>
+
+      <div className="p-4 space-y-4">
+
+        {/* Month navigator */}
+        <div className="flex items-center justify-between">
+          <button onClick={prevMonth}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+            <ChevronLeft size={16} />
+          </button>
+          <p className="text-sm font-bold text-gray-800">
+            {MONTHS[month - 1]} {year}
+          </p>
+          <button onClick={nextMonth} disabled={isMaxMonth}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors disabled:opacity-30">
+            <ChevronRight size={16} />
+          </button>
+        </div>
+
+        {loading ? <Spinner /> : error ? <ErrorCard message={error} onRetry={load} /> : (
+          <>
+            {/* Summary pills */}
+            {data?.summary && (
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { label: "Present", count: data.summary.present, color: "bg-green-50 text-green-700 border-green-200" },
+                  { label: "Absent",  count: data.summary.absent,  color: "bg-red-50 text-red-700 border-red-200"       },
+                  { label: "Leave",   count: data.summary.leave,   color: "bg-amber-50 text-amber-700 border-amber-200" },
+                  { label: "Total",   count: data.summary.total,   color: "bg-gray-50 text-gray-600 border-gray-200"    },
+                ].map(({ label, count, color }) => (
+                  <div key={label} className={`flex flex-col items-center py-2 rounded-xl border text-center ${color}`}>
+                    <span className="text-base font-bold">{count}</span>
+                    <span className="text-[10px] font-medium opacity-70">{label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Calendar grid */}
+            <div>
+              {/* Day headers */}
+              <div className="grid grid-cols-7 mb-1">
+                {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => (
+                  <div key={d} className="text-center text-[10px] font-bold text-gray-400 py-1">{d}</div>
+                ))}
+              </div>
+              {/* Day cells */}
+              <div className="grid grid-cols-7 gap-1">
+                {calendarDays.map((day, i) => (
+                  <div key={i} title={day ? (holidayMap[day] || attMap[day] || "") : ""}
+                    className={`aspect-square flex items-center justify-center rounded-xl text-xs font-semibold transition-all
+                      ${day ? getDayStyle(day) : ""}`}>
+                    {day || ""}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {[
+                { color: "bg-green-400",  label: "Present"  },
+                { color: "bg-red-400",    label: "Absent"   },
+                { color: "bg-amber-400",  label: "Leave"    },
+                { color: "bg-purple-400", label: "Holiday"  },
+                { color: "bg-violet-600", label: "Today"    },
+              ].map(({ color, label }) => (
+                <div key={label} className="flex items-center gap-1.5">
+                  <div className={`w-2.5 h-2.5 rounded-full ${color}`} />
+                  <span className="text-[10px] text-gray-500 font-medium">{label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Upcoming holidays */}
+            {upcomingHolidays.length > 0 && (
+              <div className="border-t border-gray-50 pt-3">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                  🎉 Upcoming Holidays
+                </p>
+                <div className="space-y-1.5">
+                  {upcomingHolidays.map(h => {
+                    const d = new Date(h.date);
+                    const todayStr = today.toISOString().split("T")[0];
+                    const daysLeft = Math.ceil((new Date(h.date) - new Date(todayStr)) / 86400000);
+                    return (
+                      <div key={h.date}
+                        className="flex items-center justify-between px-3 py-2 bg-purple-50 rounded-xl border border-purple-100">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-purple-200 flex flex-col items-center justify-center flex-shrink-0">
+                            <span className="text-purple-800 text-xs font-bold leading-none">{d.getDate()}</span>
+                            <span className="text-purple-600 text-[9px] font-semibold">
+                              {d.toLocaleDateString("en-IN", { month: "short" })}
+                            </span>
+                          </div>
+                          <p className="text-xs font-semibold text-gray-700">{h.title}</p>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${
+                          daysLeft === 1 ? "bg-red-100 text-red-600" :
+                          daysLeft <= 3 ? "bg-amber-100 text-amber-600" :
+                          "bg-gray-100 text-gray-500"
+                        }`}>
+                          {daysLeft === 1 ? "Tomorrow" : `${daysLeft}d`}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function StudentDashboardPage() {
   const [student,   setStudent]   = useState(null);
@@ -224,8 +413,7 @@ export default function StudentDashboardPage() {
   const [error,     setError]     = useState("");
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
       const [profileRes, teachersRes, timetableRes] = await Promise.allSettled([
         apiFetch("/student/profile"),
@@ -244,8 +432,8 @@ export default function StudentDashboardPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const today    = new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  const dayName  = new Date().toLocaleDateString("en-IN", { weekday: "long" });
+  const today       = new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const dayName     = new Date().toLocaleDateString("en-IN", { weekday: "long" });
   const todayClasses = timetable.filter(t => t.day_of_week?.toLowerCase() === dayName.toLowerCase());
 
   if (loading) {
@@ -301,21 +489,21 @@ export default function StudentDashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            {/* Profile card */}
-            <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="h-2 bg-gradient-to-r from-violet-500 to-purple-600" />
-              <div className="p-5">
-                <div className="flex items-center gap-4 mb-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
-                    {getInitials(student?.name || "")}
+            {/* Left — Profile */}
+            <div className="lg:col-span-1 space-y-5">
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="h-2 bg-gradient-to-r from-violet-500 to-purple-600" />
+                <div className="p-5">
+                  <div className="flex items-center gap-4 mb-5">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
+                      {getInitials(student?.name || "")}
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-900 text-base leading-tight">{student?.name || "—"}</p>
+                      <p className="text-xs text-violet-600 font-medium mt-0.5">{student?.class} – Section {student?.section}</p>
+                      {student?.student_id && <p className="text-xs text-gray-400 font-mono mt-0.5">{student.student_id}</p>}
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-bold text-gray-900 text-base leading-tight">{student?.name || "—"}</p>
-                    <p className="text-xs text-violet-600 font-medium mt-0.5">{student?.class} – Section {student?.section}</p>
-                    {student?.student_id && <p className="text-xs text-gray-400 font-mono mt-0.5">{student.student_id}</p>}
-                  </div>
-                </div>
-                <div>
                   <InfoRow icon={Mail}     label="Email"         value={student?.email} />
                   <InfoRow icon={Phone}    label="Phone"         value={student?.phone} />
                   <InfoRow icon={Calendar} label="Date of Birth" value={student?.date_of_birth ? new Date(student.date_of_birth).toLocaleDateString("en-IN") : null} />
@@ -325,6 +513,9 @@ export default function StudentDashboardPage() {
                   <InfoRow icon={Phone}    label="Guardian Ph"   value={student?.guardian_phone} />
                 </div>
               </div>
+
+              {/* Attendance Calendar — left col on large screens */}
+              <AttendanceCalendar />
             </div>
 
             {/* Right column */}
@@ -395,14 +586,12 @@ export default function StudentDashboardPage() {
                 )}
               </div>
 
-              {/* ✅ NOTICES — renders here below teachers */}
               <NoticesSection />
-              <StudentHomeworkList/>
+              <StudentHomeworkList />
               <StudentFeeCard studentId={student?.student_id} academicYear="2024-25" />
             </div>
           </div>
         </div>
-        
       </main>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   LayoutDashboard, Users, UserCog, School, CalendarCheck,
   FileText, BarChart3, ClipboardList,
@@ -19,15 +20,18 @@ const NAV_SECTIONS = [
       { icon: Users,           label: "Students",  href: "/students" },
       { icon: UserCog,         label: "Teachers",  href: "/teachers" },
       { icon: School,          label: "Classes",   href: "/classes" },
-      { icon: CalendarCheck,   label: "Attendance",href: "/attendance" },
+      
     ],
   },
   {
     heading: "Academic",
     items: [
       { icon: ClipboardList, label: "Notices", href: "/admin/notices" },
+      { icon: CalendarCheck, label: "Holidays", href: "/holidays" },
+      
     ],
   },
+
   {
     heading: "Finance",
     items: [
