@@ -1,27 +1,99 @@
-// routes/feesRoutes.js  — FIXED
+// // routes/feesRoutes.js  — FIXED
 
+// const express = require("express");
+// const router  = express.Router();
+// const fees    = require("../controllers/feesController");
+// const { protect, authorizeRoles } = require("../middleware/authMiddleware");
+
+// router.use(protect);
+
+// // ── Fee Structures ───────────────────────────────────────────────────────────
+// router.get   ("/structures",     authorizeRoles("admin", "teacher"), fees.getAllStructures);
+// router.post  ("/structures",     authorizeRoles("admin"),            fees.upsertStructure);
+// router.delete("/structures/:id", authorizeRoles("admin"),            fees.deleteStructure);
+
+// // ── Analytics ────────────────────────────────────────────────────────────────
+// router.get("/stats",             authorizeRoles("admin", "teacher"), fees.getStats);
+
+// // ── Student's OWN fees  ← MUST be before /students/:id ──────────────────────
+// router.get("/student/fees",      authorizeRoles("student"),          fees.getMyFees);
+
+// // ── Student Fee Records (admin + teacher) ────────────────────────────────────
+// router.get   ("/students",       authorizeRoles("admin", "teacher"), fees.getStudentFees);
+// router.get   ("/students/:id",   authorizeRoles("admin", "teacher"), fees.getStudentFeeById);
+// router.patch ("/students/:id",   authorizeRoles("admin", "teacher"), fees.updateStudentFee);
+// router.delete("/students/:id",   authorizeRoles("admin"),            fees.deleteStudentFee);
+
+// module.exports = router;
 const express = require("express");
-const router  = express.Router();
-const fees    = require("../controllers/feesController");
+const router = express.Router();
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 const { protect, authorizeRoles } = require("../middleware/authMiddleware");
+const verifyToken = protect;
+const requireRole = (...roles) => authorizeRoles(...roles);
 
-router.use(protect);
+const {
+  getStudentFees,
+  createOrder,
+  verifyPayment,
+  uploadReceipt,
+  getPendingApprovals,
+  approvePayment,
+  rejectPayment,
+  recordCashPayment,
+  getStudentFeesList,
+  updateStudentFee,
+  setFeeStructure,
+  getAllPayments,
+} = require("../controllers/feesController");
 
-// ── Fee Structures ───────────────────────────────────────────────────────────
-router.get   ("/structures",     authorizeRoles("admin", "teacher"), fees.getAllStructures);
-router.post  ("/structures",     authorizeRoles("admin"),            fees.upsertStructure);
-router.delete("/structures/:id", authorizeRoles("admin"),            fees.deleteStructure);
+// ── Multer for receipt uploads ────────────────────────────────────────────────
+const receiptDir = path.join(__dirname, "../uploads/receipts");
+if (!fs.existsSync(receiptDir)) fs.mkdirSync(receiptDir, { recursive: true });
 
-// ── Analytics ────────────────────────────────────────────────────────────────
-router.get("/stats",             authorizeRoles("admin", "teacher"), fees.getStats);
+const receiptStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, receiptDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `receipt_${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`);
+  },
+});
 
-// ── Student's OWN fees  ← MUST be before /students/:id ──────────────────────
-router.get("/student/fees",      authorizeRoles("student"),          fees.getMyFees);
+const receiptUpload = multer({
+  storage: receiptStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = [".jpg", ".jpeg", ".png", ".pdf", ".webp"];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) cb(null, true);
+    else cb(new Error("Only images and PDFs are allowed"));
+  },
+});
 
-// ── Student Fee Records (admin + teacher) ────────────────────────────────────
-router.get   ("/students",       authorizeRoles("admin", "teacher"), fees.getStudentFees);
-router.get   ("/students/:id",   authorizeRoles("admin", "teacher"), fees.getStudentFeeById);
-router.patch ("/students/:id",   authorizeRoles("admin", "teacher"), fees.updateStudentFee);
-router.delete("/students/:id",   authorizeRoles("admin"),            fees.deleteStudentFee);
+// ── Student routes ────────────────────────────────────────────────────────────
+router.get("/student/fees",           verifyToken, requireRole("student"), getStudentFees);
+router.post("/payment/create-order",  verifyToken, requireRole("student"), createOrder);
+router.post("/payment/verify",        verifyToken, requireRole("student"), verifyPayment);
+router.post(
+  "/payment/upload-receipt",
+  verifyToken,
+  requireRole("student"),
+  receiptUpload.single("receipt"),
+  uploadReceipt
+);
+
+// ── Admin routes ──────────────────────────────────────────────────────────────
+router.get("/admin/pending-approvals",    verifyToken, requireRole("admin"), getPendingApprovals);
+router.get("/admin/all-payments",         verifyToken, requireRole("admin"), getAllPayments);
+router.patch("/admin/approve/:paymentId", verifyToken, requireRole("admin"), approvePayment);
+router.patch("/admin/reject/:paymentId",  verifyToken, requireRole("admin"), rejectPayment);
+router.post("/admin/cash-payment",        verifyToken, requireRole("admin"), recordCashPayment);
+router.post("/structures",               verifyToken, requireRole("admin"), setFeeStructure);
+
+// ── Admin + Teacher routes ────────────────────────────────────────────────────
+router.get("/students",       verifyToken, getStudentFeesList);
+router.patch("/students/:id", verifyToken, requireRole("admin"), updateStudentFee);
 
 module.exports = router;

@@ -4,20 +4,48 @@ const db = require("../config/db");
 const uid = (req) => req.user.id || req.user.userId;
 
 // ── POST /api/homework ────────────────────────────────────────────────────────
+// const createHomework = async (req, res) => {
+//   try {
+//     const teacher_id = uid(req);
+//     const { title, description, subject, class_id, section, due_date } = req.body;
+
+//     if (!title || !subject || !class_id || !section || !due_date) {
+//       return res.status(400).json({ message: "All fields are required." });
+//     }
+
+//     const result = await db.query(
+//       `INSERT INTO homework (title, description, subject, class_id, section, teacher_id, due_date)
+//        VALUES ($1, $2, $3, $4, $5, $6, $7)
+//        RETURNING id`,
+//       [title, description || "", subject, class_id, section, teacher_id, due_date]
+//     );
+
+//     return res.status(201).json({
+//       message: "Homework assigned successfully.",
+//       homework_id: result.rows[0].id,
+//     });
+//   } catch (err) {
+//     console.error("createHomework:", err);
+//     return res.status(500).json({ message: "Internal server error." });
+//   }
+// };
 const createHomework = async (req, res) => {
   try {
     const teacher_id = uid(req);
     const { title, description, subject, class_id, section, due_date } = req.body;
 
-    if (!title || !subject || !class_id || !section || !due_date) {
+    if (!title || !subject || !section || !due_date) {
       return res.status(400).json({ message: "All fields are required." });
     }
 
+    // class_id null ho sakta hai subject teachers ke liye
+    // In that case, class_id column NULL allow karna hoga ya skip karo
     const result = await db.query(
-      `INSERT INTO homework (title, description, subject, class_id, section, teacher_id, due_date)
+      `INSERT INTO homework 
+        (title, description, subject, class_id, section, teacher_id, due_date)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id`,
-      [title, description || "", subject, class_id, section, teacher_id, due_date]
+      [title, description || "", subject, class_id || null, section, teacher_id, due_date]
     );
 
     return res.status(201).json({
