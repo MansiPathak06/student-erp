@@ -10,7 +10,6 @@ const razorpay = new Razorpay({
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
 const getStudentFeeRecord = async (userId) => {
   const studentRes = await pool.query(
     "SELECT id, class, section FROM students WHERE user_id = $1",
@@ -301,7 +300,6 @@ const rejectPayment = async (req, res) => {
 };
 
 // ── POST /api/fees/admin/cash-payment ─────────────────────────────────────────
-// Admin records a cash payment for a student — auto-approved
 const recordCashPayment = async (req, res) => {
   const { student_fee_id, amount, note } = req.body;
   if (!student_fee_id || !amount || Number(amount) <= 0)
@@ -327,7 +325,6 @@ const recordCashPayment = async (req, res) => {
       return res.status(400).json({ message: `Amount exceeds remaining balance of ₹${remaining}` });
     }
 
-    // Insert payment as directly approved (cash — no receipt needed)
     const payRes = await client.query(
       `INSERT INTO fee_payments
          (student_fee_id, amount, paid_on, note, status, recorded_by)
@@ -336,7 +333,6 @@ const recordCashPayment = async (req, res) => {
       [student_fee_id, Number(amount), note || "Cash payment", req.user.id]
     );
 
-    // Update student_fees paid_amount and status
     const newPaid = Number(sf.paid_amount || 0) + Number(amount);
     const newTotal = Number(sf.total_fees || 0);
     let newStatus;
@@ -382,9 +378,9 @@ const getStudentFeesList = async (req, res) => {
       WHERE 1=1`;
     const params = [];
 
-    if (cls) { params.push(cls); query += ` AND (sf.class = $${params.length} OR s.class = $${params.length})`; }
-    if (section) { params.push(section); query += ` AND s.section = $${params.length}`; }
-    if (academic_year) { params.push(academic_year); query += ` AND sf.academic_year = $${params.length}`; }
+    if (cls)          { params.push(cls);          query += ` AND (sf.class = $${params.length} OR s.class = $${params.length})`; }
+    if (section)      { params.push(section);      query += ` AND s.section = $${params.length}`; }
+    if (academic_year){ params.push(academic_year); query += ` AND sf.academic_year = $${params.length}`; }
 
     params.push(Number(limit));
     query += ` ORDER BY u.name ASC LIMIT $${params.length}`;
@@ -506,6 +502,52 @@ const getAllPayments = async (req, res) => {
   }
 };
 
+// ── GET /api/fees/stats ────────────────────────────────────────────────────────
+const getStats = async (req, res) => {
+  try {
+    const { academic_year = "2024-25" } = req.query;
+
+    // Summary: counts + amounts
+    const summary = await pool.query(
+      `SELECT
+         COUNT(*)                                                AS total_count,
+         COUNT(*) FILTER (WHERE status = 'Paid')                AS paid_count,
+         COUNT(*) FILTER (WHERE status = 'Pending')             AS pending_count,
+         COUNT(*) FILTER (WHERE status = 'Partial')             AS partial_count,
+         COUNT(*) FILTER (WHERE status = 'Overdue')             AS overdue_count,
+         COALESCE(SUM(paid_amount), 0)                          AS total_collected,
+         COALESCE(SUM(total_fees), 0)                           AS total_fees,
+         COALESCE(SUM(total_fees - paid_amount), 0)             AS total_pending
+       FROM student_fees
+       WHERE academic_year = $1`,
+      [academic_year]
+    );
+
+    // Monthly collection — last 6 months
+    const monthly = await pool.query(
+      `SELECT
+         TO_CHAR(paid_on, 'Mon YY')  AS month,
+         TO_CHAR(paid_on, 'YYYY-MM') AS month_key,
+         COALESCE(SUM(amount), 0)    AS collected
+       FROM fee_payments
+       WHERE status = 'approved'
+         AND paid_on >= NOW() - INTERVAL '6 months'
+       GROUP BY month, month_key
+       ORDER BY month_key ASC`
+    );
+
+    res.json({
+      data: {
+        summary: summary.rows[0],
+        monthly:  monthly.rows,
+      },
+    });
+  } catch (err) {
+    console.error("getStats error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 module.exports = {
   getStudentFees,
   createOrder,
@@ -519,4 +561,5 @@ module.exports = {
   updateStudentFee,
   setFeeStructure,
   getAllPayments,
+  getStats,
 };

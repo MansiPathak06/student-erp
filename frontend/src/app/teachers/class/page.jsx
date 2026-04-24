@@ -10,6 +10,9 @@ import {
   BookOpen, GraduationCap,
 } from "lucide-react";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
 const getToken = () => {
   if (typeof window === "undefined") return null;
   const m = document.cookie.match(/(^| )token=([^;]+)/);
@@ -49,6 +52,9 @@ function avatarBg(name = "") {
   return AVATAR_COLORS[h];
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STATUS CHIP
+// ─────────────────────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
   Present: { bg: "bg-green-500",  ring: "ring-green-300",  label: "Present", icon: CheckCircle },
   Absent:  { bg: "bg-red-500",    ring: "ring-red-300",    label: "Absent",  icon: XCircle     },
@@ -91,6 +97,9 @@ function StatusChip({ status, onChange, disabled }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TOAST
+// ─────────────────────────────────────────────────────────────────────────────
 function Toast({ msg, type, onDismiss }) {
   useEffect(() => {
     if (!msg) return;
@@ -111,6 +120,9 @@ function Toast({ msg, type, onDismiss }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SUMMARY BAR
+// ─────────────────────────────────────────────────────────────────────────────
 function SummaryBar({ records }) {
   const present = records.filter(r => r.status === "Present").length;
   const absent  = records.filter(r => r.status === "Absent").length;
@@ -140,6 +152,9 @@ function SummaryBar({ records }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// UPCOMING HOLIDAYS CARD
+// ─────────────────────────────────────────────────────────────────────────────
 function UpcomingHolidays({ holidays }) {
   if (!holidays || holidays.length === 0) return null;
   return (
@@ -176,14 +191,9 @@ function UpcomingHolidays({ holidays }) {
                 </p>
               </div>
               <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${
-<<<<<<< HEAD
-                isTomorrow ? "bg-red-100 text-red-600" :
-                isVerySoon ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"
-=======
                 isTomorrow ? "bg-red-100 text-red-600"
                   : isVerySoon ? "bg-amber-100 text-amber-700"
                   : "bg-gray-100 text-gray-500"
->>>>>>> 95f4bf95d62128ef68e6d77a0b9839af8bebca36
               }`}>
                 {isTomorrow ? "Tomorrow" : `${daysLeft}d`}
               </span>
@@ -195,14 +205,10 @@ function UpcomingHolidays({ holidays }) {
   );
 }
 
-<<<<<<< HEAD
-export default function TeacherClassPage() {
-=======
 // ─────────────────────────────────────────────────────────────────────────────
 // MY CLASS TAB (Attendance)
 // ─────────────────────────────────────────────────────────────────────────────
 function MyClassTab() {
->>>>>>> 95f4bf95d62128ef68e6d77a0b9839af8bebca36
   const [classes,          setClasses]          = useState([]);
   const [students,         setStudents]         = useState([]);
   const [activeClassIdx,   setActiveClassIdx]   = useState(0);
@@ -254,23 +260,8 @@ function MyClassTab() {
       if (status.status === "fulfilled") {
         setAttStatus(status.value);
         if (status.value.alreadyMarked) {
-<<<<<<< HEAD
-          const existing = await apiFetch(
-            `/attendance/records?class_id=${activeClass.id}&date=${date}`
-          );
-          // ✅ FIX: properly map existing records
-          const mapped = (existing || []).map(r => ({
-            student_id: r.student_id,
-            name:       r.name || r.student_name,
-            roll:       r.roll_number || r.roll,
-            status:     r.status,
-            note:       r.note || "",
-          }));
-          setRecords(mapped);
-=======
           const existing = await apiFetch(`/attendance/records?class_id=${activeClass.id}&date=${date}`);
           setRecords(existing);
->>>>>>> 95f4bf95d62128ef68e6d77a0b9839af8bebca36
         }
       }
       if (holidaysData.status === "fulfilled") {
@@ -314,13 +305,7 @@ function MyClassTab() {
     setMode("mark");
   }, [classStudents]);
 
-<<<<<<< HEAD
-  const startEditing = useCallback(() => {
-    setMode("edit");
-  }, []);
-=======
   const startEditing = useCallback(() => { setMode("edit"); }, []);
->>>>>>> 95f4bf95d62128ef68e6d77a0b9839af8bebca36
 
   const updateStatus = useCallback((studentId, status) => {
     setRecords(prev => prev.map(r => r.student_id === studentId ? { ...r, status } : r));
@@ -355,48 +340,17 @@ function MyClassTab() {
     }
   }, [activeClass, date, records, mode, loadAttStatus, showToast]);
 
-<<<<<<< HEAD
-  // ✅ FIX: displayRecords — status properly mapped
-=======
->>>>>>> 95f4bf95d62128ef68e6d77a0b9839af8bebca36
   const displayRecords = useMemo(() => {
-    // View mode + already marked → classStudents order mein, records se status lo
-    if (mode === "view" && attStatus?.alreadyMarked) {
-      const searchQ = search.toLowerCase();
-      return classStudents
-        .filter(s =>
-          !searchQ ||
-          s.name?.toLowerCase().includes(searchQ) ||
-          s.roll_number?.toString().includes(searchQ)
-        )
-        .map(s => {
-          const rec = records.find(r => r.student_id === s.id);
-          return {
-            student_id: s.id,
-            name:       s.name,
-            roll:       s.roll_number,
-            status:     rec?.status ?? "Present",
-            note:       rec?.note ?? "",
-          };
-        });
-    }
-
-    // Mark / Edit mode
+    if (mode === "view" && attStatus?.alreadyMarked) return records;
     if (mode !== "view") {
       const map = Object.fromEntries(records.map(r => [r.student_id, r]));
       return filtered.map(s => map[s.id] ?? {
-        student_id: s.id,
-        name:       s.name,
-        roll:       s.roll_number,
-        status:     "Present",
-        note:       "",
+        student_id: s.id, name: s.name, roll: s.roll_number, status: "Present", note: "",
       });
     }
-
-<<<<<<< HEAD
     return filtered;
-  }, [mode, attStatus, records, filtered, classStudents, search]);
-=======
+  }, [mode, attStatus, records, filtered]);
+
   return (
     <>
       {/* Sub-header: date picker + search + refresh */}
@@ -697,18 +651,14 @@ const TABS = [
 
 export default function TeacherClassPage() {
   const [activeTab, setActiveTab] = useState("class");
->>>>>>> 95f4bf95d62128ef68e6d77a0b9839af8bebca36
 
   return (
     <div className="flex min-h-screen bg-gray-50">
       <TeacherSidebar />
 
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
-<<<<<<< HEAD
-=======
 
         {/* ── Page Header ── */}
->>>>>>> 95f4bf95d62128ef68e6d77a0b9839af8bebca36
         <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-4 shadow-sm">
           <div className="pl-10 lg:pl-0">
             <h1 className="text-xl font-bold text-gray-900">My Class</h1>
@@ -738,302 +688,10 @@ export default function TeacherClassPage() {
           </div>
         </div>
 
-<<<<<<< HEAD
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl flex items-center justify-between">
-              {error}
-              <button onClick={loadBase} className="text-red-700 font-semibold text-xs ml-4 hover:underline">Retry</button>
-            </div>
-          )}
-
-          {classes.length > 1 && (
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {classes.map((cls, i) => (
-                <button key={cls.id || i}
-                  onClick={() => { setActiveClassIdx(i); setSearch(""); setMode("view"); }}
-                  className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-semibold border transition-all ${
-                    i === activeClassIdx
-                      ? "bg-emerald-500 text-white border-transparent shadow-md"
-                      : "bg-white text-gray-500 border-gray-100 hover:border-gray-200"
-                  }`}>
-                  Class {cls.grade || cls.class_name}-{cls.section}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {activeClass && !attLoading && attStatus && (
-            <div className={`rounded-2xl border p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-              attStatus.isHoliday     ? "bg-amber-50 border-amber-200" :
-              attStatus.alreadyMarked ? "bg-green-50 border-green-200" :
-                                        "bg-blue-50 border-blue-200"
-            }`}>
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                  attStatus.isHoliday     ? "bg-amber-100" :
-                  attStatus.alreadyMarked ? "bg-green-100" : "bg-blue-100"
-                }`}>
-                  {attStatus.isHoliday
-                    ? <span className="text-xl">🎉</span>
-                    : attStatus.alreadyMarked
-                    ? <CheckCircle size={20} className="text-green-600" />
-                    : <CalendarCheck size={20} className="text-blue-600" />
-                  }
-                </div>
-                <div>
-                  <p className={`font-bold text-sm ${
-                    attStatus.isHoliday     ? "text-amber-800" :
-                    attStatus.alreadyMarked ? "text-green-800" : "text-blue-800"
-                  }`}>
-                    {attStatus.isHoliday
-                      ? `Holiday: ${attStatus.holidayTitle}`
-                      : attStatus.alreadyMarked
-                      ? "Attendance Marked ✓"
-                      : "Attendance Not Marked Yet"
-                    }
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5">{formatDate(date)}</p>
-                  {attStatus.alreadyMarked && (
-                    <p className="text-xs text-green-600 mt-0.5">
-                      {attStatus.markedCount} students marked
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex gap-2 flex-shrink-0">
-                {!attStatus.isHoliday && !attStatus.alreadyMarked && mode === "view" && (
-                  <button onClick={startMarking} disabled={classStudents.length === 0}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold shadow-md transition-all disabled:opacity-50">
-                    <CalendarCheck size={15} />
-                    Mark Attendance
-                  </button>
-                )}
-                {attStatus.alreadyMarked && mode === "view" && (
-                  <button onClick={startEditing}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-green-200 bg-white text-sm font-medium text-green-700 hover:bg-green-50 transition-all">
-                    <Pencil size={14} />
-                    Edit
-                  </button>
-                )}
-                {(mode === "mark" || mode === "edit") && (
-                  <>
-                    <button onClick={() => { setMode("view"); loadAttStatus(); }}
-                      className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-all">
-                      Cancel
-                    </button>
-                    <button onClick={handleSubmit} disabled={saving}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold shadow-md transition-all disabled:opacity-60">
-                      {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                      {saving ? "Saving…" : mode === "edit" ? "Update" : "Submit"}
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          {attLoading && (
-            <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
-              <Loader2 size={16} className="animate-spin" /> Checking attendance status…
-            </div>
-          )}
-
-          {!attLoading && <UpcomingHolidays holidays={upcomingHolidays} />}
-
-          {(mode === "mark" || mode === "edit") && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold text-gray-700">Bulk Actions</p>
-                <p className="text-xs text-gray-400">Apply status to all {filtered.length} visible students</p>
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                {["Present", "Absent", "Leave"].map(s => {
-                  const cfg = STATUS_CONFIG[s];
-                  return (
-                    <button key={s} onClick={() => markAll(s)}
-                      className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-xs font-bold ${cfg.bg} hover:opacity-90 transition-all`}>
-                      All {s}
-                    </button>
-                  );
-                })}
-              </div>
-              <SummaryBar records={records} />
-            </div>
-          )}
-
-          {loading ? (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />
-              ))}
-            </div>
-          ) : !activeClass ? (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-20 text-center">
-              <div className="text-5xl mb-3">🏫</div>
-              <p className="text-sm font-semibold text-gray-500">No class assigned to you yet</p>
-              <p className="text-xs text-gray-400 mt-1">Contact admin to get assigned</p>
-            </div>
-          ) : (
-            <>
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center flex-shrink-0">
-                  <Users size={22} className="text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-base font-bold text-gray-900">
-                    Class {(activeClass.class_name || "").replace(/^Class\s+/i, "") || activeClass.grade} – Section {activeClass.section}
-                  </h2>
-                  {activeClass.room_no && (
-                    <p className="text-xs text-gray-400 mt-0.5">Room: {activeClass.room_no}</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 rounded-xl px-4 py-2 border border-emerald-100">
-                    <Users size={15} />
-                    <span className="text-sm font-bold">{classStudents.length}</span>
-                    <span className="text-xs">students</span>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const res = await fetch(
-                          `/api/attendance/export?class_id=${activeClass.id}&year=${new Date().getFullYear()}`,
-                          { headers: { Authorization: `Bearer ${getToken()}` } }
-                        );
-                        if (!res.ok) {
-                          const err = await res.json();
-                          showToast(err.message || "Export failed", "error");
-                          return;
-                        }
-                        const blob = await res.blob();
-                        const url  = URL.createObjectURL(blob);
-                        const a    = document.createElement("a");
-                        a.href     = url;
-                        a.download = `Attendance_${activeClass.class_name || activeClass.grade}-${activeClass.section}_${new Date().getFullYear()}.xlsx`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      } catch {
-                        showToast("Export failed. Try again.", "error");
-                      }
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm transition-all"
-                  >
-                    📥 Excel
-                  </button>
-                </div>
-              </div>
-
-              {/* ── Desktop Table ── */}
-              <div className="hidden sm:block bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <table className="w-full text-sm min-w-[700px]">
-                  <thead className="bg-gray-50 border-b border-gray-100">
-                    <tr>
-                      {["#", "Student", "Roll No.", "Gender", "Phone", "Guardian",
-                        ...(mode !== "view" || attStatus?.alreadyMarked ? ["Attendance"] : [])
-                      ].map(h => (
-                        <th key={h} className="px-4 py-3.5 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayRecords.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="py-16 text-center text-gray-400 text-sm">
-                          {search ? "No students match your search" : "No students in this class"}
-                        </td>
-                      </tr>
-                    ) : displayRecords.map((s, i) => {
-                      const student = students.find(st => st.id === s.student_id) ?? s;
-                      // ✅ FIX: status directly from displayRecords item
-                      const currentStatus = s.status ?? "Present";
-
-                      return (
-                        <tr key={s.student_id ?? i}
-                          className={`border-b border-gray-50 hover:bg-emerald-50/30 transition-colors ${
-                            currentStatus === "Absent" ? "bg-red-50/20" :
-                            currentStatus === "Leave"  ? "bg-amber-50/20" : ""
-                          }`}>
-                          <td className="px-4 py-3 text-xs text-gray-400 font-mono">{i + 1}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-9 h-9 rounded-xl ${avatarBg(student.name || s.name)} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
-                                {initials(student.name || s.name || "")}
-                              </div>
-                              <div>
-                                <p className="font-semibold text-gray-900 text-sm">{student.name || s.name}</p>
-                                <p className="text-xs text-gray-400">{student.email}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 font-mono text-xs text-gray-500">{s.roll ?? student.roll_number ?? "—"}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{student.gender || "—"}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{student.phone || "—"}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{student.guardian_name || "—"}</td>
-                          {(mode !== "view" || attStatus?.alreadyMarked) && (
-                            <td className="px-4 py-3">
-                              <StatusChip
-                                status={currentStatus}
-                                disabled={mode === "view"}
-                                onChange={(st) => updateStatus(s.student_id, st)}
-                              />
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* ── Mobile Cards ── */}
-              <div className="sm:hidden space-y-3">
-                {displayRecords.map((s, i) => {
-                  const student = students.find(st => st.id === s.student_id) ?? s;
-                  // ✅ FIX: status directly from displayRecords item
-                  const currentStatus = s.status ?? "Present";
-                  return (
-                    <div key={s.student_id ?? i}
-                      className={`bg-white rounded-2xl border shadow-sm p-4 ${
-                        currentStatus === "Absent" ? "border-red-200" :
-                        currentStatus === "Leave"  ? "border-amber-200" : "border-gray-100"
-                      }`}>
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className={`w-10 h-10 rounded-xl ${avatarBg(student.name || s.name)} flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}>
-                          {initials(student.name || s.name || "")}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-gray-900 truncate">{student.name || s.name}</p>
-                          <p className="text-xs text-gray-400">Roll: {s.roll ?? student.roll_number ?? "—"}</p>
-                        </div>
-                        <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{i+1}</span>
-                      </div>
-                      {(mode !== "view" || attStatus?.alreadyMarked) && (
-                        <StatusChip
-                          status={currentStatus}
-                          disabled={mode === "view"}
-                          onChange={(st) => updateStatus(s.student_id, st)}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {!search && mode === "view" && (
-                <p className="text-xs text-gray-400 text-center">
-                  {classStudents.length} students in alphabetical order
-                </p>
-              )}
-            </>
-          )}
-=======
         {/* ── Tab Content ── */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {activeTab === "class" && <MyClassTab />}
           {activeTab === "homework" && <TeacherHomeworkForm />}
->>>>>>> 95f4bf95d62128ef68e6d77a0b9839af8bebca36
         </div>
 
       </main>
