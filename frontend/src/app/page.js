@@ -16,6 +16,8 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getInitials(name = "") {
   return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
@@ -189,7 +191,7 @@ export default function DashboardPage() {
       const [dashData, studentsData, feeStats, attTrend] = await Promise.allSettled([
         apiFetch("/admin/dashboard"),
         apiFetch("/admin/students"),
-        apiFetch("/fees/stats?academic_year=2024-25"),
+        apiFetch("/fees/stats"),
         apiFetch(`/admin/attendance/trend?days=${attRange}`),
       ]);
 
@@ -232,7 +234,8 @@ export default function DashboardPage() {
       setActivities([...recentStudents, ...feeActivity, ...noticeActivity]);
 
       // ── Build chart data ─────────────────────────────────────────────────────
-      const monthly  = fees?.data?.monthly || [];
+      const monthly = fees?.data?.monthly || fees?.monthly || [];
+      console.log("fees:", fees, "monthly:", monthly);
       const feeBar   = monthly.map(m => ({
         month:     m.month,
         Collected: Number(m.collected),

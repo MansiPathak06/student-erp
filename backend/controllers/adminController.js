@@ -137,7 +137,11 @@ const createStudent = async (req, res) => {
     phone,
     guardian_name,
     guardian_phone,
+    aadhar_number,  
   } = req.body;
+
+ console.log("🔍 req.body received:", JSON.stringify(req.body, null, 2));
+  console.log("🔍 aadhar_number value:", aadhar_number, "| type:", typeof aadhar_number);
 
   if (!name || !email || !password || !roll_number || !class_id) {
     return res.status(400).json({
@@ -160,32 +164,34 @@ const createStudent = async (req, res) => {
 
     const finalStudentId = student_id?.trim() || (await generateStudentId());
 
-    const studentResult = await client.query(
-      `INSERT INTO students
-         (user_id, student_id, roll_number, class_id, class, section,
-          class_teacher, date_of_birth, gender, address, phone,
-          guardian_name, guardian_phone, fee_status)
-       VALUES
-         ($1, $2, $3, $4, $5, $6,
-          $7, $8, $9, $10, $11,
-          $12, $13, 'Pending')
-       RETURNING *`,
-      [
-        userId,
-        finalStudentId,
-        roll_number,
-        class_id,
-        className,
-        section,
-        class_teacher,
-        date_of_birth || null,
-        gender,
-        address,
-        phone,
-        guardian_name,
-        guardian_phone,
-      ]
-    );
+   const studentResult = await client.query(
+  `INSERT INTO students
+     (user_id, student_id, roll_number, class_id, class, section,
+      class_teacher, date_of_birth, gender, address, phone,
+      guardian_name, guardian_phone, fee_status, aadhar_number)
+   VALUES
+     ($1, $2, $3, $4, $5, $6,
+      $7, $8, $9, $10, $11,
+      $12, $13, 'Pending', $14)
+   RETURNING *`,
+  [
+    userId,               // $1
+    finalStudentId,       // $2
+    roll_number,          // $3
+    class_id,             // $4
+    className,            // $5
+    section,              // $6
+    class_teacher,        // $7
+    date_of_birth || null,// $8
+    gender,               // $9
+    address,              // $10
+    phone,                // $11
+    guardian_name,        // $12
+    guardian_phone,       // $13
+    // 'Pending' is inline in SQL ↑ — no $14 for it
+    aadhar_number || null,// $14 ← now correctly hits aadhar_number column
+  ]
+);
 
     await client.query("COMMIT");
 
@@ -224,9 +230,10 @@ const updateStudent = async (req, res) => {
     class_teacher,
     phone,
     address,
-    fee_status,
     guardian_name,
     guardian_phone,
+    aadhar_number,   // ← keep
+    // fee_status,   // ← REMOVE from destructure or just don't pass it below
   } = req.body;
 
   try {
@@ -238,13 +245,25 @@ const updateStudent = async (req, res) => {
          class_teacher  = COALESCE($4, class_teacher),
          phone          = COALESCE($5, phone),
          address        = COALESCE($6, address),
-         fee_status     = COALESCE($7, fee_status),
-         guardian_name  = COALESCE($8, guardian_name),
-         guardian_phone = COALESCE($9, guardian_phone),
+         guardian_name  = COALESCE($7, guardian_name),
+         guardian_phone = COALESCE($8, guardian_phone),
+         aadhar_number  = COALESCE($9, aadhar_number),
          updated_at     = NOW()
        WHERE id = $10
        RETURNING *`,
-      [class_id, className, section, class_teacher, phone, address, fee_status, guardian_name, guardian_phone, id]
+      [
+        class_id,
+        className,
+        section,
+        class_teacher,
+        phone,
+        address,
+        guardian_name,   // ← $7 ✓
+        guardian_phone,  // ← $8 ✓
+        aadhar_number,   // ← $9 ✓
+        id,              // ← $10 ✓
+        // fee_status is GONE — no $11
+      ]
     );
 
     if (result.rows.length === 0) {
@@ -328,6 +347,51 @@ const uploadStudentPhoto = async (req, res) => {
   }
 };
 
+// ── POST /api/admin/students/:id/aadhar-image ─────────────────────────────
+const uploadAadharImage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const imageUrl = `/uploads/aadhar/${req.file.filename}`;
+
+    await pool.query(
+      "UPDATE students SET aadhar_image_url = $1 WHERE id = $2 RETURNING id, aadhar_image_url",
+      [imageUrl, req.params.id]
+    );
+
+    res.json({
+      message: "Aadhaar image uploaded successfully",
+      aadhar_image_url: imageUrl,
+    });
+  } catch (err) {
+    console.error("uploadAadharImage error:", err);
+    res.status(500).json({ message: "Failed to upload Aadhaar image" });
+  }
+};
+
+// ── PUT /api/admin/students/:id/aadhar-number ─────────────────────────────
+const updateAadharNumber = async (req, res) => {
+  try {
+    const { aadhar_number } = req.body;
+
+    if (!aadhar_number || !/^\d{12}$/.test(aadhar_number)) {
+      return res.status(400).json({ message: "Valid 12-digit Aadhaar number is required" });
+    }
+
+    await pool.query(
+      "UPDATE students SET aadhar_number = $1 WHERE id = $2",
+      [aadhar_number, req.params.id]
+    );
+
+    res.json({ message: "Aadhaar number updated successfully" });
+  } catch (err) {
+    console.error("updateAadharNumber error:", err);
+    res.status(500).json({ message: "Failed to update Aadhaar number" });
+  }
+};
+
 module.exports = {
   getDashboard,
   getAllStudents,
@@ -336,4 +400,6 @@ module.exports = {
   deleteStudent,
   getStudentMeta,
   uploadStudentPhoto,
+  uploadAadharImage,    // ← ADD
+  updateAadharNumber,   
 };

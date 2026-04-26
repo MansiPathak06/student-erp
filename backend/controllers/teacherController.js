@@ -1,6 +1,7 @@
 const pool   = require("../config/db");
 const bcrypt = require("bcryptjs");
 const path   = require("path");
+const SERVER_URL = process.env.SERVER_URL || "http://localhost:5000";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,9 @@ const getAllTeachers = async (req, res) => {
         t.phone,
         t.teacher_type AS "teacherType",
         t.status,
+         t.aadhar_number,        
+        t.aadhar_image_url,   
+        t.profile_picture,  
         t.created_at,
         u.name,
         u.email,
@@ -86,6 +90,11 @@ const getAllTeachers = async (req, res) => {
       classTeacherSection: t.classTeacherAssignment?.section || "",
       avatar: getInitials(t.name),
       avatarColor: AVATAR_COLORS[t.id % AVATAR_COLORS.length],
+       aadharNumber:   t.aadhar_number || "",                                         // ← ADD
+      aadharImageUrl: t.aadhar_image_url ? `${SERVER_URL}${t.aadhar_image_url}` : null, // ← ADD
+      profilePicture: t.profile_picture
+  ? `${SERVER_URL}${t.profile_picture}`
+  : null,
     }));
 
     res.json(teachers);
@@ -137,7 +146,7 @@ const checkClassTeacherExists = async (client, grade, section, excludeTeacherId 
 
 // UPDATE createTeacher function
 const createTeacher = async (req, res) => {
-  const { name, email, password, phone, teacherType, classTeacherClass, classTeacherSection, subjectAssignments, status } = req.body;
+  const { name, email, password, phone, teacherType, classTeacherClass, classTeacherSection, subjectAssignments, status,  aadhar_number,  } = req.body;
   
   const client = await pool.connect();
   try {
@@ -153,9 +162,9 @@ const createTeacher = async (req, res) => {
 
     // Create teacher
     const teacherResult = await client.query(
-      `INSERT INTO teachers (user_id, phone, teacher_type, status)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [userId, phone, teacherType, status || 'Active']
+      `INSERT INTO teachers (user_id, phone, teacher_type, status, aadhar_number)
+        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [userId, phone, teacherType, status || 'Active', aadhar_number || null]
     );
     const teacherId = teacherResult.rows[0].id;
 
@@ -235,7 +244,7 @@ const createTeacher = async (req, res) => {
 // UPDATE updateTeacher function
 const updateTeacher = async (req, res) => {
   const { id } = req.params;
-  const { name, phone, teacherType, classTeacherClass, classTeacherSection, subjectAssignments, status } = req.body;
+  const { name, phone, teacherType, classTeacherClass, classTeacherSection, subjectAssignments, status,   aadhar_number, } = req.body;
   
   const client = await pool.connect();
   try {
@@ -265,13 +274,14 @@ const updateTeacher = async (req, res) => {
 
     // Update teacher info
     await client.query(
-      `UPDATE teachers SET 
-        phone = COALESCE($1, phone),
-        teacher_type = COALESCE($2, teacher_type),
-        status = COALESCE($3, status),
-        updated_at = NOW()
-       WHERE id = $4`,
-      [phone, teacherType, status, id]
+        `UPDATE teachers SET
+       phone         = COALESCE($1, phone),
+       teacher_type  = COALESCE($2, teacher_type),
+       status        = COALESCE($3, status),
+       aadhar_number = COALESCE($4, aadhar_number),
+       updated_at    = NOW()
+     WHERE id = $5`,
+    [phone, teacherType, status, aadhar_number || null, id]
     );
 
     // Handle class teacher assignment
@@ -339,6 +349,14 @@ const updateTeacher = async (req, res) => {
         }
       }
     }
+    // Save profile picture if uploaded
+if (req.file) {
+  const photoUrl = `/uploads/teachers/${req.file.filename}`;
+  await client.query(
+    "UPDATE teachers SET profile_picture = $1 WHERE id = $2",
+    [photoUrl, id]
+  );
+}
 
     await client.query("COMMIT");
     
@@ -741,6 +759,41 @@ const getHomeworkClasses = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+// ── POST /api/admin/teachers/:id/aadhar-image ─────────────────────────────
+const uploadTeacherAadharImage = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+    const imageUrl = `/uploads/aadhar-teachers/${req.file.filename}`;
+    await pool.query(
+      "UPDATE teachers SET aadhar_image_url = $1 WHERE id = $2",
+      [imageUrl, req.params.id]
+    );
+    res.json({ message: "Aadhaar image uploaded successfully", aadhar_image_url: imageUrl });
+  } catch (err) {
+    console.error("uploadTeacherAadharImage error:", err);
+    res.status(500).json({ message: "Failed to upload Aadhaar image" });
+  }
+};
+
+// ── PUT /api/admin/teachers/:id/aadhar-number ─────────────────────────────
+const updateTeacherAadharNumber = async (req, res) => {
+  try {
+    const { aadhar_number } = req.body;
+    if (!aadhar_number || !/^\d{12}$/.test(aadhar_number)) {
+      return res.status(400).json({ message: "Valid 12-digit Aadhaar number required" });
+    }
+    await pool.query(
+      "UPDATE teachers SET aadhar_number = $1 WHERE id = $2",
+      [aadhar_number, req.params.id]
+    );
+    res.json({ message: "Aadhaar number updated successfully" });
+  } catch (err) {
+    console.error("updateTeacherAadharNumber error:", err);
+    res.status(500).json({ message: "Failed to update Aadhaar number" });
+  }
+};
  
 
 module.exports = {
@@ -759,4 +812,6 @@ module.exports = {
     getTimetable,
     updateStudentFee,
       getHomeworkClasses,
+      uploadTeacherAadharImage,
+       updateTeacherAadharNumber,
 };

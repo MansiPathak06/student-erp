@@ -1,24 +1,58 @@
 const pool = require("../config/db");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 
-// GET /api/student/profile
+// ─── Multer config for Aadhaar image uploads ──────────────────────────────────
+const aadharStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = "uploads/aadhar";
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `aadhar_${req.params.id}_${Date.now()}${ext}`);
+  },
+});
+
+const aadharUpload = multer({
+  storage: aadharStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Only JPG, PNG, WebP or PDF allowed for Aadhaar"));
+  },
+});
+
+// ─── GET /api/student/profile ─────────────────────────────────────────────────
 const getProfile = async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT s.*, u.name, u.email FROM students s JOIN users u ON s.user_id = u.id WHERE s.user_id = $1`,
+      `SELECT s.*, u.name, u.email FROM students s 
+       JOIN users u ON s.user_id = u.id 
+       WHERE s.user_id = $1`,
       [req.user.id]
     );
-    if (result.rows.length === 0) return res.status(404).json({ message: "Profile not found" });
+    if (result.rows.length === 0)
+      return res.status(404).json({ message: "Profile not found" });
     res.json(result.rows[0]);
   } catch (err) {
+    console.error("getProfile error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// GET /api/student/attendance
+// ─── GET /api/student/attendance ──────────────────────────────────────────────
 const getAttendance = async (req, res) => {
   try {
-    const student = await pool.query("SELECT id FROM students WHERE user_id=$1", [req.user.id]);
-    if (student.rows.length === 0) return res.status(404).json({ message: "Student not found" });
+    const student = await pool.query(
+      "SELECT id FROM students WHERE user_id=$1",
+      [req.user.id]
+    );
+    if (student.rows.length === 0)
+      return res.status(404).json({ message: "Student not found" });
 
     const result = await pool.query(
       "SELECT * FROM attendance WHERE student_id=$1 ORDER BY date DESC LIMIT 60",
@@ -30,11 +64,15 @@ const getAttendance = async (req, res) => {
   }
 };
 
-// GET /api/student/results
+// ─── GET /api/student/results ─────────────────────────────────────────────────
 const getResults = async (req, res) => {
   try {
-    const student = await pool.query("SELECT id FROM students WHERE user_id=$1", [req.user.id]);
-    if (student.rows.length === 0) return res.status(404).json({ message: "Student not found" });
+    const student = await pool.query(
+      "SELECT id FROM students WHERE user_id=$1",
+      [req.user.id]
+    );
+    if (student.rows.length === 0)
+      return res.status(404).json({ message: "Student not found" });
 
     const result = await pool.query(
       "SELECT * FROM results WHERE student_id=$1 ORDER BY exam_date DESC",
@@ -46,11 +84,15 @@ const getResults = async (req, res) => {
   }
 };
 
-// GET /api/student/fees
+// ─── GET /api/student/fees ────────────────────────────────────────────────────
 const getFees = async (req, res) => {
   try {
-    const student = await pool.query("SELECT id FROM students WHERE user_id=$1", [req.user.id]);
-    if (student.rows.length === 0) return res.status(404).json({ message: "Student not found" });
+    const student = await pool.query(
+      "SELECT id FROM students WHERE user_id=$1",
+      [req.user.id]
+    );
+    if (student.rows.length === 0)
+      return res.status(404).json({ message: "Student not found" });
 
     const result = await pool.query(
       "SELECT * FROM fees WHERE student_id=$1 ORDER BY due_date DESC",
@@ -62,11 +104,15 @@ const getFees = async (req, res) => {
   }
 };
 
-// GET /api/student/assignments
+// ─── GET /api/student/assignments ─────────────────────────────────────────────
 const getAssignments = async (req, res) => {
   try {
-    const student = await pool.query("SELECT class, section FROM students WHERE user_id=$1", [req.user.id]);
-    if (student.rows.length === 0) return res.status(404).json({ message: "Student not found" });
+    const student = await pool.query(
+      "SELECT class, section FROM students WHERE user_id=$1",
+      [req.user.id]
+    );
+    if (student.rows.length === 0)
+      return res.status(404).json({ message: "Student not found" });
 
     const { class: cls, section } = student.rows[0];
     const result = await pool.query(
@@ -84,7 +130,7 @@ const getAssignments = async (req, res) => {
   }
 };
 
-// GET /api/student/timetable
+// ─── GET /api/student/timetable ───────────────────────────────────────────────
 const getTimetable = async (req, res) => {
   try {
     const student = await pool.query(
@@ -95,7 +141,6 @@ const getTimetable = async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
 
     const { class: cls, section } = student.rows[0];
-
     const result = await pool.query(
       `SELECT tt.*, u.name as teacher_name, c.class_name, c.section
        FROM timetable tt
@@ -103,13 +148,13 @@ const getTimetable = async (req, res) => {
        JOIN teachers t ON tt.teacher_id = t.id
        JOIN users u ON t.user_id = u.id
        WHERE (c.class_name = $1 AND c.section = $2)
-          OR (c.class_name = $3)          
+          OR (c.class_name = $3)
        ORDER BY CASE tt.day_of_week
          WHEN 'Monday' THEN 1 WHEN 'Tuesday' THEN 2
          WHEN 'Wednesday' THEN 3 WHEN 'Thursday' THEN 4
          WHEN 'Friday' THEN 5 WHEN 'Saturday' THEN 6
        END, tt.start_time`,
-      [cls, section, `${cls}-${section}`] // handles both "11","C" and "11-C" formats
+      [cls, section, `${cls}-${section}`]
     );
     res.json(result.rows);
   } catch (err) {
@@ -118,8 +163,7 @@ const getTimetable = async (req, res) => {
   }
 };
 
-// GET /api/student/teachers
-// GET /api/student/teachers
+// ─── GET /api/student/teachers ────────────────────────────────────────────────
 const getTeachers = async (req, res) => {
   try {
     const result = await pool.query(
@@ -135,6 +179,65 @@ const getTeachers = async (req, res) => {
   }
 };
 
-// ↓ Update this line at the bottom
-module.exports = { getProfile, getAttendance, getResults, getFees, getAssignments, getTimetable, getTeachers };
+// ─── POST /api/student/:id/aadhar-image ───────────────────────────────────────
+// Upload Aadhaar card image and save URL to DB
+const uploadAadharImage = [
+  aadharUpload.single("aadhar_image"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
 
+      // Build the public URL path (adjust base URL to match your server setup)
+      const imageUrl = `/uploads/aadhar/${req.file.filename}`;
+
+      await pool.query(
+        "UPDATE students SET aadhar_image_url = $1 WHERE id = $2",
+        [imageUrl, req.params.id]
+      );
+
+      res.json({
+        message: "Aadhaar image uploaded successfully",
+        aadhar_image_url: imageUrl,
+      });
+    } catch (err) {
+      console.error("uploadAadharImage error:", err);
+      res.status(500).json({ message: "Failed to upload Aadhaar image" });
+    }
+  },
+];
+
+// ─── PUT /api/student/:id/aadhar-number ───────────────────────────────────────
+// Save or update Aadhaar number only (for edits without re-uploading image)
+const updateAadharNumber = async (req, res) => {
+  try {
+    const { aadhar_number } = req.body;
+
+    if (!aadhar_number || !/^\d{12}$/.test(aadhar_number)) {
+      return res.status(400).json({ message: "Valid 12-digit Aadhaar number is required" });
+    }
+
+    await pool.query(
+      "UPDATE students SET aadhar_number = $1 WHERE id = $2",
+      [aadhar_number, req.params.id]
+    );
+
+    res.json({ message: "Aadhaar number updated successfully" });
+  } catch (err) {
+    console.error("updateAadharNumber error:", err);
+    res.status(500).json({ message: "Failed to update Aadhaar number" });
+  }
+};
+
+module.exports = {
+  getProfile,
+  getAttendance,
+  getResults,
+  getFees,
+  getAssignments,
+  getTimetable,
+  getTeachers,
+  uploadAadharImage,   // ← NEW
+  updateAadharNumber,  // ← NEW
+};

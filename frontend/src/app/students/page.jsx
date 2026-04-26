@@ -15,6 +15,15 @@ const AVATAR_COLORS = [
   "bg-pink-500","bg-indigo-500","bg-teal-500","bg-orange-500",
 ];
 
+// ─── Media URL helper ─────────────────────────────────────────────────────────  ← ADD HERE
+const SERVER_URL = "http://localhost:5000";
+
+function getMediaUrl(path) {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+  return `${SERVER_URL}${path}`;
+}
+
 function getInitials(name = "") {
   if (!name) return "?";
   const parts = name.split(" ").filter(Boolean);
@@ -50,8 +59,10 @@ function normalizeStudent(s) {
     fee:            s.fee_status    || "Pending",
     attendance:     typeof s.attendance_pct !== "undefined" ? Number(s.attendance_pct) : 0,
     isActive:       s.is_active,
-    photoUrl:       s.photo_url || null,
+    photoUrl:       getMediaUrl(s.photo_url),        // ← wrapped
     classId:        s.class_id ? String(s.class_id) : "",
+    aadharNumber:   s.aadhar_number  || "",
+    aadharImageUrl: getMediaUrl(s.aadhar_image_url), // ← wrapped
   };
 }
 
@@ -266,6 +277,23 @@ function ViewModal({ student, onClose }) {
           <InfoRow label="Email" value={student.email} />
           <InfoRow label="Phone" value={student.phone} />
           <InfoRow label="Address" value={student.address} />
+          <InfoRow label="Aadhaar Number" value={
+  student.aadharNumber
+    ? student.aadharNumber.replace(/(\d{4})(\d{4})(\d{4})/, "$1 $2 $3")
+    : "—"
+} />
+{student.aadharImageUrl && (
+  <div className="mt-2">
+    <p className="text-xs text-gray-400 mb-1">Aadhaar Card</p>
+    <a href={student.aadharImageUrl} target="_blank" rel="noreferrer">
+      <img
+        src={student.aadharImageUrl}
+        alt="Aadhaar Card"
+        className="h-20 rounded-lg border border-gray-200 object-cover hover:opacity-80 transition-opacity cursor-pointer"
+      />
+    </a>
+  </div>
+)}
         </InfoBlock>
         <InfoBlock title="Class Info">
           <InfoRow label="Class" value={student.class} />
@@ -303,7 +331,7 @@ function InfoRow({ label, value }) {
 const EMPTY_FORM = {
   name: "", email: "", password: "", roll: "", studentId: "",
   classId: "", class: "", section: "", classTeacher: "",
-  dob: "", gender: "", address: "", phone: "", parentName: "", parentContact: "",
+  dob: "", gender: "", address: "", phone: "", parentName: "", parentContact: "", aadharNumber: "", aadharImageUrl: "", 
 };
 
 function AddEditModal({ student, classMeta, onClose, onSave, saving }) {
@@ -315,6 +343,20 @@ function AddEditModal({ student, classMeta, onClose, onSave, saving }) {
 
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(student?.photoUrl || null);
+
+  const [aadharFile, setAadharFile] = useState(null);
+const [aadharPreview, setAadharPreview] = useState(student?.aadharImageUrl || null);
+
+const handleAadharChange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    alert("Aadhaar image must be under 5MB.");
+    return;
+  }
+  setAadharFile(file);
+  setAadharPreview(URL.createObjectURL(file));
+};
 
   const handlePhotoChange = (e) => {
     const file = e.target.files[0];
@@ -350,7 +392,12 @@ function AddEditModal({ student, classMeta, onClose, onSave, saving }) {
     if (!form.classId) return alert("Please select a class.");
     if (!isEdit && !form.email.trim()) return alert("Email is required.");
     if (!isEdit && !form.password.trim()) return alert("Password is required.");
-    onSave(form, photoFile);
+    if (!form.aadharNumber.trim()) return alert("Aadhaar card number is required.");
+if (!/^\d{12}$/.test(form.aadharNumber.replace(/\s/g, "")))
+  return alert("Aadhaar number must be exactly 12 digits.");
+if (!isEdit && !aadharFile && !form.aadharImageUrl)
+  return alert("Aadhaar card image is required.");
+    onSave(form, photoFile,aadharFile);
   };
 
   return (
@@ -450,9 +497,67 @@ function AddEditModal({ student, classMeta, onClose, onSave, saving }) {
         <Field label="Phone" value={form.phone} onChange={v => set("phone", v)} placeholder="10-digit number" />
         <Field label="Parent Name" value={form.parentName} onChange={v => set("parentName", v)} placeholder="Guardian's full name" />
         <Field label="Parent Contact" value={form.parentContact} onChange={v => set("parentContact", v)} placeholder="10-digit number" />
-        <div className="sm:col-span-2">
-          <Field label="Address" value={form.address} onChange={v => set("address", v)} placeholder="Full address" />
-        </div>
+
+          {/* Aadhaar Number */}
+<div className="sm:col-span-2">
+  <label className="field-label">Aadhaar Card Number *</label>
+  <input
+    type="text"
+    value={form.aadharNumber}
+    onChange={e => {
+      // Allow digits and spaces only, max 14 chars (12 digits + 2 spaces)
+      const val = e.target.value.replace(/[^\d\s]/g, "").slice(0, 14);
+      set("aadharNumber", val);
+    }}
+    placeholder="XXXX XXXX XXXX"
+    maxLength={14}
+    className="field-input font-mono tracking-widest"
+  />
+  <p className="text-xs text-gray-400 mt-1">12-digit Aadhaar number</p>
+</div>
+
+{/* Aadhaar Card Image */}
+<div className="sm:col-span-2">
+  <label className="field-label">Aadhaar Card Image *</label>
+  <div className="flex items-start gap-4">
+    {aadharPreview && (
+      <div className="flex-shrink-0">
+        <img
+          src={aadharPreview}
+          alt="Aadhaar Preview"
+          className="h-28 rounded-lg border border-gray-200 object-cover shadow-sm"
+        />
+        <p className="text-xs text-green-600 mt-1 text-center">✓ Uploaded</p>
+      </div>
+    )}
+    <div>
+      <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        {aadharPreview ? "Change Image" : "Upload Aadhaar Image"}
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp,application/pdf"
+          onChange={handleAadharChange}
+          className="hidden"
+        />
+      </label>
+      <p className="text-xs text-gray-400 mt-1">JPG, PNG, WebP or PDF · Max 5MB</p>
+      {aadharFile && <p className="text-xs text-green-600 mt-1">✓ {aadharFile.name}</p>}
+    </div>
+  </div>
+</div>
+       <div className="sm:col-span-2">
+  <Field
+    label="Address (as per Aadhaar Card) *"
+    value={form.address}
+    onChange={v => set("address", v)}
+    placeholder="Full address as printed on Aadhaar card"
+  />
+</div>
       </div>
 
       <div className="flex gap-3 mt-5 pt-4 border-t border-gray-100">
@@ -638,7 +743,7 @@ export default function StudentsPage() {
     setSelected(s => s.length === paginated.length ? [] : paginated.map(s => s.id));
   }, [paginated]);
 
-  const handleSave = useCallback(async (form, photoFile) => {
+  const handleSave = useCallback(async (form, photoFile,aadharFile) => {
     setSaving(true);
     let savedId = null;
     
@@ -659,6 +764,7 @@ export default function StudentsPage() {
         phone: form.phone || null,
         guardian_name: form.parentName || null,
         guardian_phone: form.parentContact || null,
+          aadhar_number: form.aadharNumber.replace(/\s/g, "") || null,
       };
 
       // Add student_id only if provided (for edit or manual entry)
@@ -680,6 +786,7 @@ export default function StudentsPage() {
           address: form.address,
           guardian_name: form.parentName,
           guardian_phone: form.parentContact,
+           aadhar_number: form.aadharNumber.replace(/\s/g, "") || null,
         };
         result = await api.update(form.id, updateData);
         savedId = form.id;
@@ -707,6 +814,19 @@ export default function StudentsPage() {
           showToast("Student saved but photo upload failed.", "error");
         }
       }
+      if (aadharFile && savedId) {
+  try {
+    const formData = new FormData();
+    formData.append("aadhar_image", aadharFile);
+    await apiFetch(`/admin/students/${savedId}/aadhar-image`, {
+      method: "POST",
+      body: formData,
+    });
+  } catch (err) {
+    console.error("Aadhaar image upload failed:", err);
+    showToast("Student saved but Aadhaar image upload failed.", "error");
+  }
+}
 
       setShowAddEdit(false);
       setEditStudent(null);

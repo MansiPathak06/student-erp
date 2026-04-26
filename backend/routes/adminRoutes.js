@@ -9,7 +9,7 @@ const { protect, authorizeRoles } = require("../middleware/authMiddleware");
 // ── Import upload middleware (for students photos)
 const studentUpload = require("../middleware/upload");   // uploads/students/
 
-// ── Multer for teacher profile pictures (separate config)
+// ── Multer for teacher profile pictures
 const multer = require("multer");
 const uploadDir = path.join(__dirname, "../uploads/teachers");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
@@ -30,6 +30,54 @@ const teacherUpload = multer({
   },
 });
 
+// ── NEW: Multer for Aadhaar card images ──────────────────────────────────────
+const aadharDir = path.join(__dirname, "../uploads/aadhar");
+if (!fs.existsSync(aadharDir)) fs.mkdirSync(aadharDir, { recursive: true });
+
+const aadharStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, aadharDir),
+  filename:    (req,  file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `aadhar_${req.params.id}_${Date.now()}${ext}`);
+  },
+});
+const aadharUpload = multer({
+  storage: aadharStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },   // 5 MB
+  fileFilter: (_req, file, cb) => {
+    const okExt  = /jpeg|jpg|png|webp|pdf/.test(
+      path.extname(file.originalname).toLowerCase()
+    );
+    const okMime = /jpeg|jpg|png|webp|pdf/.test(file.mimetype);
+    okExt && okMime
+      ? cb(null, true)
+      : cb(new Error("Only JPG, PNG, WebP or PDF allowed for Aadhaar"));
+  },
+});
+
+// ── NEW: Multer for teacher Aadhaar images ───────────────────────────────────
+const aadharTeacherDir = path.join(__dirname, "../uploads/aadhar-teachers");
+if (!fs.existsSync(aadharTeacherDir)) fs.mkdirSync(aadharTeacherDir, { recursive: true });
+
+const aadharTeacherStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, aadharTeacherDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `aadhar_teacher_${req.params.id}_${Date.now()}${ext}`);
+  },
+});
+const aadharTeacherUpload = multer({
+  storage: aadharTeacherStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = /jpeg|jpg|png|webp|pdf/.test(
+      path.extname(file.originalname).toLowerCase()
+    );
+    ok ? cb(null, true) : cb(new Error("Only JPG, PNG, WebP or PDF allowed"));
+  },
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ── Controllers
 const {
   getDashboard,
@@ -38,16 +86,18 @@ const {
   createStudent,
   updateStudent,
   deleteStudent,
-  uploadStudentPhoto, 
-    // ← make sure this is exported from adminController
+  uploadStudentPhoto,
+  uploadAadharImage,    // ← NEW
+  updateAadharNumber,   // ← NEW
 } = require("../controllers/adminController");
 
 const {
-  getAllTeachers, getTeacherMeta, createTeacher, deleteTeacher, updateTeacher,
+  getAllTeachers, getTeacherMeta, createTeacher, deleteTeacher, updateTeacher, uploadTeacherAadharImage,   // ← ADD
+  updateTeacherAadharNumber,
 } = require("../controllers/teacherController");
 
 const {
-  getAllClasses, getClassMeta, createClass, updateClass, deleteClass,checkTeacherClassAssignment,
+  getAllClasses, getClassMeta, createClass, updateClass, deleteClass, checkTeacherClassAssignment,
 } = require("../controllers/classController");
 
 // ── Auth guard for ALL admin routes
@@ -57,14 +107,22 @@ router.use(protect, authorizeRoles("admin"));
 router.get("/dashboard", getDashboard);
 
 // ── Students  (IMPORTANT: /meta must come before /:id)
-router.get   ("/students/meta",        getStudentMeta);
-router.get   ("/students",             getAllStudents);
-router.post  ("/students",             createStudent);
-router.put   ("/students/:id",         updateStudent);
-router.delete("/students/:id",         deleteStudent);
-router.post  ("/students/:id/photo",   studentUpload.single("photo"), uploadStudentPhoto);
+router.get   ("/students/meta",              getStudentMeta);
+router.get   ("/students",                   getAllStudents);
+router.post  ("/students",                   createStudent);
+router.post  ("/students/:id/photo",         studentUpload.single("photo"), uploadStudentPhoto);
+
+// ── NEW: Aadhaar routes ──────────────────────────────────────────────────────
+router.post  ("/students/:id/aadhar-image",  aadharUpload.single("aadhar_image"), uploadAadharImage);
+router.put   ("/students/:id/aadhar-number", updateAadharNumber);
+router.put   ("/students/:id",               updateStudent);
+router.delete("/students/:id",               deleteStudent);
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 router.get("/teachers/check-class", checkTeacherClassAssignment);
-// Attendance trend for last N days
+
+// ── Attendance trend
 router.get("/attendance/trend", async (req, res) => {
   try {
     const days = parseInt(req.query.days) || 7;
@@ -90,7 +148,11 @@ router.get("/attendance/trend", async (req, res) => {
 // ── Teachers
 router.get   ("/teachers/meta",        getTeacherMeta);
 router.get   ("/teachers",             getAllTeachers);
+
 router.post  ("/teachers",             teacherUpload.single("profilePicture"), createTeacher);
+router.post("/teachers/:id/aadhar-image",  aadharTeacherUpload.single("aadhar_image"), uploadTeacherAadharImage);
+router.put ("/teachers/:id/aadhar-number", updateTeacherAadharNumber);
+
 router.put   ("/teachers/:id",         teacherUpload.single("profilePicture"), updateTeacher);
 router.delete("/teachers/:id",         deleteTeacher);
 
