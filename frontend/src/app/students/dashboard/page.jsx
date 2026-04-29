@@ -20,6 +20,13 @@ function getInitials(name = "") {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+const SERVER_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+function getMediaUrl(path) {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+  return `${SERVER_URL}${path}`;
+}
+
 const MONTHS = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December",
@@ -495,9 +502,19 @@ export default function StudentDashboardPage() {
                 <div className="h-2 bg-gradient-to-r from-violet-500 to-purple-600" />
                 <div className="p-5">
                   <div className="flex items-center gap-4 mb-5">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
-                      {getInitials(student?.name || "")}
-                    </div>
+                   <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-violet-100 flex-shrink-0">
+  {student?.photo_url ? (
+    <img
+      src={getMediaUrl(student.photo_url)}
+      alt={student.name}
+      className="w-full h-full object-cover"
+    />
+  ) : (
+    <div className="w-full h-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl">
+      {getInitials(student?.name || "")}
+    </div>
+  )}
+</div>
                     <div>
                       <p className="font-bold text-gray-900 text-base leading-tight">{student?.name || "—"}</p>
                       <p className="text-xs text-violet-600 font-medium mt-0.5">{student?.class} – Section {student?.section}</p>

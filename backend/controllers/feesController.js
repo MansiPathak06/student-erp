@@ -431,37 +431,65 @@ const setFeeStructure = async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    await client.query(
-      `INSERT INTO fee_structures (class, section, academic_year, tuition_fee, library_fee, other_fee, due_date)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
-       ON CONFLICT (class, section, academic_year)
-       DO UPDATE SET tuition_fee=$4, library_fee=$5, other_fee=$6, due_date=$7, updated_at=NOW()`,
-      [cls, section || null, academic_year || "2024-25", tuition_fee, library_fee || 0, other_fee || 0, due_date || null]
-    );
+    // ← total pehle define karo
+    const total = Number(tuition_fee) + Number(library_fee || 0) + Number(other_fee || 0);
+await client.query(
+  `INSERT INTO fee_structures 
+     (class, section, academic_year, tuition_fee, library_fee, other_fee, due_date)
+   VALUES ($1::varchar, $2::varchar, $3::varchar, $4::numeric, $5::numeric, $6::numeric, $7::date)
+   ON CONFLICT (class, section, academic_year)
+   DO UPDATE SET 
+     tuition_fee = EXCLUDED.tuition_fee,
+     library_fee = EXCLUDED.library_fee,
+     other_fee   = EXCLUDED.other_fee,
+     due_date    = EXCLUDED.due_date,
+     updated_at  = NOW()`,
+  [cls, section || null, academic_year || "2024-25", tuition_fee, library_fee || 0, other_fee || 0, due_date || null]
+);
 
     let studentQuery = "SELECT id FROM students WHERE class = $1";
     const params = [cls];
     if (section) { params.push(section); studentQuery += ` AND section = $${params.length}`; }
     const students = await client.query(studentQuery, params);
 
-    const total = Number(tuition_fee) + Number(library_fee || 0) + Number(other_fee || 0);
+   // student_fees INSERT — alag query mein $3 conflict fix
+for (const student of students.rows) {
+  const ay = academic_year || "2024-25";
+  
+  // Pehle existing record check karo
+  const existing = await client.query(
+    `SELECT paid_amount, status FROM student_fees 
+     WHERE student_id = $1 AND academic_year = $2::varchar`,
+    [student.id, ay]
+  );
+  
+  const existingPaid = existing.rows[0]?.paid_amount || 0;
+  const existingStatus = existing.rows[0]?.status || "Pending";
 
-    for (const student of students.rows) {
-      await client.query(
-        `INSERT INTO student_fees
-           (student_id, class, academic_year, tuition_fee, library_fee, other_fee,
-            total_fees, paid_amount, status, due_date)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,
-           COALESCE((SELECT paid_amount FROM student_fees WHERE student_id=$1 AND academic_year=$3), 0),
-           COALESCE((SELECT status FROM student_fees WHERE student_id=$1 AND academic_year=$3), 'Pending'),
-           $8)
-         ON CONFLICT (student_id, academic_year)
-         DO UPDATE SET tuition_fee=$4, library_fee=$5, other_fee=$6,
-                       total_fees = $7 + COALESCE(student_fees.transport_fee,0),
-                       due_date=$8, updated_at=NOW()`,
-        [student.id, cls, academic_year || "2024-25", tuition_fee, library_fee || 0, other_fee || 0, total, due_date || null]
-      );
-    }
+  await client.query(
+    `INSERT INTO student_fees
+       (student_id, class, academic_year, tuition_fee, library_fee, other_fee,
+        total_fees, paid_amount, status, due_date)
+     VALUES ($1::int, $2::varchar, $3::varchar, $4::numeric, $5::numeric, $6::numeric,
+             $7::numeric, $8::numeric, $9::varchar, $10::date)
+     ON CONFLICT (student_id, academic_year)
+     DO UPDATE SET 
+       tuition_fee = EXCLUDED.tuition_fee,
+       library_fee = EXCLUDED.library_fee,
+       other_fee   = EXCLUDED.other_fee,
+       total_fees  = EXCLUDED.total_fees + COALESCE(student_fees.transport_fee, 0),
+       due_date    = EXCLUDED.due_date,
+       updated_at  = NOW()`,
+    [
+      student.id, cls, ay,
+      tuition_fee, library_fee || 0, other_fee || 0,
+      total,
+      existingPaid,
+      existingStatus,
+      due_date || null
+    ]
+  );
+}
 
     await client.query("COMMIT");
     res.json({ success: true, students_updated: students.rows.length });

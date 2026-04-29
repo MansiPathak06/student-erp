@@ -5,7 +5,7 @@ import StudentSidebar from "@/components/StudentSidebar";
 import { apiFetch } from "@/lib/api";
 import {
   User, Mail, Phone, MapPin, Calendar,
-  BookOpen, Shield, Hash,
+  BookOpen, Shield, Hash,CreditCard
 } from "lucide-react";
 
 function getInitials(name = "") {
@@ -13,6 +13,13 @@ function getInitials(name = "") {
   if (!parts.length) return "?";
   if (parts.length === 1) return parts[0][0].toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+const SERVER_URL = "http://localhost:5000";
+function getMediaUrl(path) {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+  return `${SERVER_URL}${path}`;
 }
 
 function Section({ title, children }) {
@@ -97,9 +104,19 @@ export default function StudentProfilePage() {
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 <div className="h-24 bg-gradient-to-r from-violet-500 to-purple-700 relative">
                   <div className="absolute -bottom-8 left-6">
-                    <div className="w-16 h-16 rounded-2xl bg-white border-4 border-white shadow-lg flex items-center justify-center text-2xl font-bold text-violet-600">
-                      {getInitials(student.name)}
-                    </div>
+                  <div className="w-16 h-16 rounded-2xl border-4 border-white shadow-lg overflow-hidden flex-shrink-0">
+  {student.photo_url ? (
+    <img
+      src={getMediaUrl(student.photo_url)}
+      alt={student.name}
+      className="w-full h-full object-cover"
+    />
+  ) : (
+    <div className="w-full h-full bg-white flex items-center justify-center text-2xl font-bold text-violet-600">
+      {getInitials(student.name)}
+    </div>
+  )}
+</div>
                   </div>
                 </div>
                 <div className="pt-12 pb-5 px-6">
@@ -132,6 +149,33 @@ export default function StudentProfilePage() {
                 <Row icon={Calendar} label="Date of Birth"  value={student.date_of_birth ? new Date(student.date_of_birth).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : null} />
                 <Row icon={User}     label="Gender"         value={student.gender} />
                 <Row icon={MapPin}   label="Address"        value={student.address} />
+
+                {/* ─── Aadhaar Details ─── */}
+  {student.aadhar_number && (
+    <Row
+      icon={CreditCard}
+      label="Aadhaar Number"
+      value={student.aadhar_number.replace(/(\d{4})(\d{4})(\d{4})/, "$1 $2 $3")}
+    />
+  )}
+  {student.aadhar_image_url && (
+    <div className="flex items-start gap-3 py-3 border-b border-gray-50 last:border-0">
+      <div className="w-7 h-7 rounded-lg bg-violet-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <CreditCard size={13} className="text-violet-500" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <span className="text-xs text-gray-400 block mb-2">Aadhaar Card Image</span>
+        <a href={student.aadhar_image_url} target="_blank" rel="noreferrer">
+          <img
+            src={getMediaUrl(student.aadhar_image_url)}
+            alt="Aadhaar Card"
+            className="h-28 rounded-xl border border-gray-200 object-cover shadow-sm hover:opacity-80 transition-opacity cursor-pointer"
+          />
+          <p className="text-xs text-violet-500 mt-1 hover:underline">Click to view full image</p>
+        </a>
+      </div>
+    </div>
+  )}
               </Section>
 
               {/* Academic Details */}

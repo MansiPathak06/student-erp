@@ -7,6 +7,8 @@ import {
   Users, Hash, Award,
 } from "lucide-react";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
 const getToken = () => {
   if (typeof window === "undefined") return null;
   const m = document.cookie.match(/(^| )token=([^;]+)/);
@@ -14,7 +16,7 @@ const getToken = () => {
 };
 
 const apiFetch = (path) =>
-  fetch(`/api/teacher${path}`, {
+  fetch(`${API_BASE}/api/teacher${path}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   }).then((r) => {
     if (!r.ok) throw new Error(`${r.status}`);
@@ -69,27 +71,30 @@ export default function TeacherProfilePage() {
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const [p, cl] = await Promise.allSettled([
-        apiFetch("/profile"),
-        apiFetch("/classes"),
-      ]);
-      if (p.status  === "fulfilled") setProfile(p.value);
-      if (cl.status === "fulfilled") setClasses(cl.value || []);
-
-      // derive subjects from profile subjectAssignments if present
-      if (p.status === "fulfilled" && p.value?.subject_assignments) {
+const load = useCallback(async () => {
+  setLoading(true);
+  setError("");
+  try {
+    const [p, cl] = await Promise.allSettled([
+      apiFetch("/profile"),
+      apiFetch("/classes"),
+    ]);
+    if (p.status === "fulfilled") {
+      setProfile(p.value);
+      // Try pre-parsed array first (new API shape), fallback to JSON string
+      if (p.value?.subjectAssignments?.length) {
+        setSubjects(p.value.subjectAssignments);
+      } else if (p.value?.subject_assignments) {
         try { setSubjects(JSON.parse(p.value.subject_assignments)); } catch {}
       }
-    } catch {
-      setError("Could not load your profile. Please try again.");
-    } finally {
-      setLoading(false);
     }
-  }, []);
+    if (cl.status === "fulfilled") setClasses(cl.value || []);
+  } catch {
+    setError("Could not load your profile. Please try again.");
+  } finally {
+    setLoading(false);
+  }
+}, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -204,6 +209,38 @@ export default function TeacherProfilePage() {
                   )}
                 </Section>
               )}
+
+              {/* Aadhaar Details */}
+{(profile.aadhar_number || profile.aadhar_image_url) && (
+  <Section title="Aadhaar Details">
+    {profile.aadhar_number && (
+      <div className="flex items-start gap-3 py-3 border-b border-gray-50 last:border-0">
+        <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <Hash size={13} className="text-emerald-500" />
+        </div>
+        <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5">
+          <span className="text-xs text-gray-400">Aadhaar Number</span>
+          <span className="text-sm text-gray-800 font-medium font-mono tracking-widest">
+            {profile.aadhar_number.replace(/(\d{4})(\d{4})(\d{4})/, "$1 $2 $3")}
+          </span>
+        </div>
+      </div>
+    )}
+    {profile.aadhar_image_url && (
+      <div className={profile.aadhar_number ? "pt-3" : ""}>
+        <p className="text-xs text-gray-400 mb-2">Aadhaar Card Image</p>
+        <a href={profile.aadhar_image_url} target="_blank" rel="noreferrer">
+          <img
+            src={profile.aadhar_image_url}
+            alt="Aadhaar Card"
+            className="h-28 rounded-xl border border-gray-100 object-cover hover:opacity-80 transition-opacity cursor-pointer shadow-sm"
+          />
+        </a>
+        <p className="text-[10px] text-gray-400 mt-1">Click to view full image</p>
+      </div>
+    )}
+  </Section>
+)}
             </div>
           ) : (
             <div className="py-24 text-center text-gray-400">

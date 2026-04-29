@@ -1,4 +1,4 @@
-const BASE = "http://localhost:5000/api";
+const BASE = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api`;
 
 function getCookie(name) {
   if (typeof document === "undefined") return null;

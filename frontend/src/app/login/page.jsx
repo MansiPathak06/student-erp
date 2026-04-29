@@ -19,6 +19,9 @@ import {
   ArrowLeft,
 } from "lucide-react";
 
+// Imports ke baad, ROLES array se pehle — file ke top mein add karo:
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
 const ROLES = [
   {
     key: "admin",
@@ -119,7 +122,7 @@ function ForgotPasswordModal({ isOpen, onClose, activeRole, onBackToLogin }) {
   const [countdown, setCountdown] = useState(0);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   useEffect(() => {
     let timer;
     if (countdown > 0) {
@@ -139,8 +142,7 @@ function ForgotPasswordModal({ isOpen, onClose, activeRole, onBackToLogin }) {
     setError("");
 
     try {
-      const res = await fetch(
-        "http://localhost:5000/api/auth/forgot-password",
+      const res = await fetch(`${API_BASE}/api/auth/forgot-password`, 
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -177,7 +179,7 @@ function ForgotPasswordModal({ isOpen, onClose, activeRole, onBackToLogin }) {
     setError("");
 
     try {
-      const res = await fetch("http://localhost:5000/api/auth/verify-otp", {
+      const res = await fetch(`${API_BASE}/api/auth/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, otp }),
@@ -218,7 +220,7 @@ function ForgotPasswordModal({ isOpen, onClose, activeRole, onBackToLogin }) {
     setError("");
 
     try {
-      const res = await fetch("http://localhost:5000/api/auth/reset-password", {
+      const res = await fetch(`${API_BASE}/api/auth/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ resetToken, newPassword }),
@@ -253,8 +255,7 @@ function ForgotPasswordModal({ isOpen, onClose, activeRole, onBackToLogin }) {
     setError("");
 
     try {
-      const res = await fetch(
-        "http://localhost:5000/api/auth/forgot-password",
+      const res = await fetch(`${API_BASE}/api/auth/forgot-password`, 
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -663,7 +664,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:5000/api/auth/login", {
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, role }),

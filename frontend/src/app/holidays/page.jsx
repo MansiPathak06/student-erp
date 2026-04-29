@@ -13,6 +13,7 @@ const MONTHS = [
   "July","August","September","October","November","December",
 ];
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,8 +57,7 @@ function AddHolidayModal({ onClose, onSaved }) {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/attendance/holidays", {
-        method: "POST",
+      const res = await fetch(`${API_BASE}/api/attendance/holidays`, {        method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({ date, title: title.trim(), description: description.trim() || null }),
       });
@@ -157,7 +157,7 @@ export default function HolidaysPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/attendance/holidays?year=${year}`, { headers: authHeaders() });
+      const res = await fetch(`${API_BASE}/api/attendance/holidays?year=${year}`, { headers: authHeaders() });
       const data = await res.json();
       setHolidays(data || []);
     } catch {
@@ -172,7 +172,7 @@ export default function HolidaysPage() {
   async function handleDelete(id) {
     setDeleting(true);
     try {
-      const res = await fetch(`/api/attendance/holidays/${id}`, {
+      const res = await fetch(`${API_BASE}/api/attendance/holidays/${id}`, {
         method: "DELETE",
         headers: authHeaders(),
       });

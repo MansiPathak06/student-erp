@@ -12,7 +12,7 @@ import {
 // ─────────────────────────────────────────────
 // CONFIG
 // ─────────────────────────────────────────────
-const API_BASE = "http://localhost:5000/api/admin";
+const API_BASE = `${process.env.NEXT_PUBLIC_API_URL}/api/admin`;
 
 const DAYS    = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const PERIODS = Array.from({ length: 7 }, (_, i) => i + 1); // [1,2,3,4,5,6,7]
@@ -158,14 +158,16 @@ function PeriodModal({ initial, onClose, onSave, teachers, classId }) {
   }
 
   const selectedTeacher = teachers.find(t => String(t.id) === form.teacher_id);
-  const teacherSubjects = useMemo(() => {
-    if (!selectedTeacher) return [];
-    const assignments = selectedTeacher.subject_assignments || [];
-    const subjects = assignments.map(a => a.subject).filter(Boolean);
-    if (selectedTeacher.subject && !subjects.includes(selectedTeacher.subject))
-      subjects.unshift(selectedTeacher.subject);
-    return subjects.length > 0 ? subjects : (selectedTeacher.subject ? [selectedTeacher.subject] : []);
-  }, [selectedTeacher]);
+const teacherSubjects = useMemo(() => {
+  if (!selectedTeacher) return [];
+  const assignments = selectedTeacher.subject_assignments || [];
+  const subjects = assignments.map(a => a.subject).filter(Boolean);
+  if (selectedTeacher.subject && !subjects.includes(selectedTeacher.subject))
+    subjects.unshift(selectedTeacher.subject);
+  
+  // Duplicates remove karo
+  return [...new Set(subjects)];
+}, [selectedTeacher]);
 
   async function handleSave() {
     if (!form.teacher_id || !form.subject || !form.day_of_week || !form.period_number)

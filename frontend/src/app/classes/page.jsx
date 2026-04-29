@@ -21,32 +21,14 @@ import {
 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 const getToken = () => {
   if (typeof window === "undefined") return null;
-
-  // First try localStorage (your current method)
-  let token = localStorage.getItem("token");
-
-  // If not found, try cookies (like the Teachers page does)
-  if (!token) {
-    const match = document.cookie.match(/(^| )token=([^;]+)/);
-    token = match ? match[2] : null;
-  }
-
-  // If still not found, try sessionStorage as fallback
-  if (!token) {
-    token = sessionStorage.getItem("token");
-  }
-
-  return token;
+  const match = document.cookie.match(/(^| )token=([^;]+)/);
+  return match ? match[2] : null;
 };
-
-// const authHeaders = () => ({
-//   "Content-Type": "application/json",
-//   Authorization: `Bearer ${getToken()}`,
-// });
 
 // ── Colour helpers ────────────────────────────────────────────────────────────
 const PALETTE = [
@@ -60,18 +42,16 @@ const PALETTE = [
   "pink",
 ];
 const AVATAR_COLORS = {
-  blue: { bg: "bg-blue-100", text: "text-blue-700" },
-  violet: { bg: "bg-violet-100", text: "text-violet-700" },
+  blue:    { bg: "bg-blue-100",    text: "text-blue-700"    },
+  violet:  { bg: "bg-violet-100",  text: "text-violet-700"  },
   emerald: { bg: "bg-emerald-100", text: "text-emerald-700" },
-  amber: { bg: "bg-amber-100", text: "text-amber-700" },
-  rose: { bg: "bg-rose-100", text: "text-rose-700" },
-  slate: { bg: "bg-slate-100", text: "text-slate-600" },
-  sky: { bg: "bg-sky-100", text: "text-sky-700" },
-  pink: { bg: "bg-pink-100", text: "text-pink-700" },
+  amber:   { bg: "bg-amber-100",   text: "text-amber-700"   },
+  rose:    { bg: "bg-rose-100",    text: "text-rose-700"    },
+  slate:   { bg: "bg-slate-100",   text: "text-slate-600"   },
+  sky:     { bg: "bg-sky-100",     text: "text-sky-700"     },
+  pink:    { bg: "bg-pink-100",    text: "text-pink-700"    },
 };
 const colorForId = (id) => PALETTE[id % PALETTE.length];
-
-// In your Add/Edit Class modal, add this validation
 
 // ── Summary Card ──────────────────────────────────────────────────────────────
 function SummaryCard({ label, value, icon: Icon, accent, bg, trend }) {
@@ -81,9 +61,7 @@ function SummaryCard({ label, value, icon: Icon, accent, bg, trend }) {
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
           {label}
         </p>
-        <div
-          className={`w-8 h-8 rounded-xl ${bg} flex items-center justify-center`}
-        >
+        <div className={`w-8 h-8 rounded-xl ${bg} flex items-center justify-center`}>
           <Icon size={16} className={accent} />
         </div>
       </div>
@@ -97,15 +75,15 @@ function SummaryCard({ label, value, icon: Icon, accent, bg, trend }) {
 const EMPTY_FORM = { grade: "", section: "", teacher_id: "" };
 
 function ClassModal({ open, onClose, onSaved, editData, teachers }) {
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm]     = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
+  const [err, setErr]       = useState("");
 
   useEffect(() => {
     if (editData) {
       setForm({
-        grade: editData.grade || "",
-        section: editData.section || "",
+        grade:      editData.grade   || "",
+        section:    editData.section || "",
         teacher_id: editData.teacherId || "",
       });
     } else {
@@ -116,33 +94,17 @@ function ClassModal({ open, onClose, onSaved, editData, teachers }) {
 
   if (!open) return null;
 
-  const change = (e) =>
-    setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
-
-  // In your Add/Edit Class modal, add this validation
-  const handleClassTeacherChange = async (teacherId, grade, section) => {
-    // Check if this class already has a teacher
-    const response = await fetch(
-      `/api/admin/classes/check?grade=${grade}&section=${section}`,
-    );
-    const data = await response.json();
-
-    if (data.hasClassTeacher && data.teacherId !== teacherId) {
-      alert(`Class ${grade}-${section} already has a class teacher: ${data.teacherName}. 
-           Please remove them first before assigning a new one.`);
-      return false;
-    }
-    return true;
-  };
+  const change = (e) => setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
 
   const submit = async () => {
     if (!form.grade || !form.section)
       return setErr("Grade and section are required.");
+
     // Check if class already has a teacher and we're trying to assign a different one
     if (form.teacher_id) {
       try {
         const checkRes = await fetch(
-          `/api/admin/classes/check?grade=${form.grade}&section=${form.section}`,
+          `${API_BASE}/api/admin/classes/check?grade=${form.grade}&section=${form.section}`,
           { headers: authHeaders() },
         );
         const checkData = await checkRes.json();
@@ -153,40 +115,40 @@ function ClassModal({ open, onClose, onSaved, editData, teachers }) {
         ) {
           return setErr(
             `Class ${form.grade}-${form.section} already has a class teacher: ${checkData.teacherName}. ` +
-              `Please remove them first before assigning a new one.`,
+            `Please remove them first before assigning a new one.`,
           );
         }
       } catch (err) {
         console.error("Check error:", err);
       }
     }
+
     const teacherCheckRes = await fetch(
-      `/api/admin/teachers/check-class?teacherId=${form.teacher_id}&excludeClassId=${editData?.dbId || ""}`,
+      `${API_BASE}/api/admin/teachers/check-class?teacherId=${form.teacher_id}&excludeClassId=${editData?.dbId || ""}`,
       { headers: authHeaders() },
     );
     const teacherCheckData = await teacherCheckRes.json();
-     if (teacherCheckData.hasClass) {
-        return setErr(
-          `Teacher is already the class teacher for Class ${teacherCheckData.grade}-${teacherCheckData.section}. ` +
-          `A teacher can only be class teacher for one class.`
-        );
-      }
+    if (teacherCheckData.hasClass) {
+      return setErr(
+        `Teacher is already the class teacher for Class ${teacherCheckData.grade}-${teacherCheckData.section}. ` +
+        `A teacher can only be class teacher for one class.`
+      );
+    }
 
     setSaving(true);
     setErr("");
     try {
-      // class_name is derived from grade for DB compatibility
       const payload = {
         class_name: form.grade,
-        section: form.section,
-        grade: form.grade,
+        section:    form.section,
+        grade:      form.grade,
         teacher_id: form.teacher_id || null,
       };
-      const url = editData
-        ? `/api/admin/classes/${editData.dbId}`
-        : "/api/admin/classes";
+      const url    = editData
+        ? `${API_BASE}/api/admin/classes/${editData.dbId}`
+        : `${API_BASE}/api/admin/classes`;
       const method = editData ? "PUT" : "POST";
-      const res = await fetch(url, {
+      const res    = await fetch(url, {
         method,
         headers: authHeaders(),
         body: JSON.stringify(payload),
@@ -222,9 +184,7 @@ function ClassModal({ open, onClose, onSaved, editData, teachers }) {
         <div className="p-6 flex flex-col gap-4">
           {/* Grade */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-500">
-              Grade *
-            </label>
+            <label className="text-xs font-semibold text-gray-500">Grade *</label>
             <input
               name="grade"
               value={form.grade}
@@ -236,9 +196,7 @@ function ClassModal({ open, onClose, onSaved, editData, teachers }) {
 
           {/* Section */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-500">
-              Section *
-            </label>
+            <label className="text-xs font-semibold text-gray-500">Section *</label>
             <input
               name="section"
               value={form.section}
@@ -250,9 +208,7 @@ function ClassModal({ open, onClose, onSaved, editData, teachers }) {
 
           {/* Class Teacher */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-500">
-              Class Teacher
-            </label>
+            <label className="text-xs font-semibold text-gray-500">Class Teacher</label>
             <select
               name="teacher_id"
               value={form.teacher_id}
@@ -333,17 +289,17 @@ function DeleteModal({ open, onClose, onConfirm, className, deleting }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function ClassUI() {
-  const [classes, setClasses] = useState([]);
-  const [meta, setMeta] = useState({ teachers: [], grades: [] });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [search, setSearch] = useState("");
-  const [filterGrade, setFilterGrade] = useState("All Grades");
+  const [classes,       setClasses]       = useState([]);
+  const [meta,          setMeta]          = useState({ teachers: [], grades: [] });
+  const [loading,       setLoading]       = useState(true);
+  const [error,         setError]         = useState(null);
+  const [search,        setSearch]        = useState("");
+  const [filterGrade,   setFilterGrade]   = useState("All Grades");
   const [filterSection, setFilterSection] = useState("All Sections");
-  const [modal, setModal] = useState(false);
-  const [editData, setEditData] = useState(null);
-  const [deleteInfo, setDeleteInfo] = useState(null);
-  const [deleting, setDeleting] = useState(false);
+  const [modal,         setModal]         = useState(false);
+  const [editData,      setEditData]      = useState(null);
+  const [deleteInfo,    setDeleteInfo]    = useState(null);
+  const [deleting,      setDeleting]      = useState(false);
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
@@ -351,17 +307,15 @@ export default function ClassUI() {
     setError(null);
     try {
       const [clsRes, metaRes] = await Promise.all([
-        fetch("/api/admin/classes", { headers: authHeaders() }),
-        fetch("/api/admin/classes/meta", { headers: authHeaders() }),
+        fetch(`${API_BASE}/api/admin/classes`,      { headers: authHeaders() }),
+        fetch(`${API_BASE}/api/admin/classes/meta`, { headers: authHeaders() }),
       ]);
       const [clsData, metaData] = await Promise.all([
         clsRes.json(),
         metaRes.json(),
       ]);
-      if (!clsRes.ok)
-        throw new Error(clsData.message || "Failed to load classes");
-      if (!metaRes.ok)
-        throw new Error(metaData.message || "Failed to load meta");
+      if (!clsRes.ok)  throw new Error(clsData.message  || "Failed to load classes");
+      if (!metaRes.ok) throw new Error(metaData.message || "Failed to load meta");
       setClasses(clsData);
       setMeta(metaData);
     } catch (e) {
@@ -371,16 +325,14 @@ export default function ClassUI() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+  useEffect(() => { fetchAll(); }, [fetchAll]);
 
   // ── Delete ────────────────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!deleteInfo) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/admin/classes/${deleteInfo.dbId}`, {
+      const res = await fetch(`${API_BASE}/api/admin/classes/${deleteInfo.dbId}`, {
         method: "DELETE",
         headers: authHeaders(),
       });
@@ -413,52 +365,21 @@ export default function ClassUI() {
         c.grade.toLowerCase().includes(q) ||
         c.section.toLowerCase().includes(q) ||
         c.classTeacher.toLowerCase().includes(q);
-      const matchG = filterGrade === "All Grades" || c.grade === filterGrade;
-      const matchS =
-        filterSection === "All Sections" || c.section === filterSection;
+      const matchG = filterGrade   === "All Grades"   || c.grade   === filterGrade;
+      const matchS = filterSection === "All Sections" || c.section === filterSection;
       return matchQ && matchG && matchS;
     });
   }, [classes, search, filterGrade, filterSection]);
 
   // ── Summary stats ─────────────────────────────────────────────────────────
-  const assignedCount = classes.filter(
-    (c) => c.classTeacher !== "Unassigned",
-  ).length;
+  const assignedCount   = classes.filter((c) => c.classTeacher !== "Unassigned").length;
   const unassignedCount = classes.length - assignedCount;
 
   const SUMMARY = [
-    {
-      label: "Total Classes",
-      value: loading ? "—" : classes.length,
-      icon: BookOpen,
-      accent: "text-blue-600",
-      bg: "bg-blue-50",
-      trend: "Live from database",
-    },
-    {
-      label: "Total Grades",
-      value: loading ? "—" : meta.grades.length,
-      icon: GraduationCap,
-      accent: "text-emerald-600",
-      bg: "bg-emerald-50",
-      trend: "Distinct grades",
-    },
-    {
-      label: "Teachers Assigned",
-      value: loading ? "—" : assignedCount,
-      icon: UserCog,
-      accent: "text-violet-600",
-      bg: "bg-violet-50",
-      trend: `${unassignedCount} unassigned`,
-    },
-    {
-      label: "Total Sections",
-      value: loading ? "—" : sectionOptions.length - 1,
-      icon: Users,
-      accent: "text-amber-600",
-      bg: "bg-amber-50",
-      trend: "Across all grades",
-    },
+    { label: "Total Classes",    value: loading ? "—" : classes.length,        icon: BookOpen,     accent: "text-blue-600",   bg: "bg-blue-50",   trend: "Live from database"        },
+    { label: "Total Grades",     value: loading ? "—" : meta.grades.length,    icon: GraduationCap,accent: "text-emerald-600", bg: "bg-emerald-50",trend: "Distinct grades"           },
+    { label: "Teachers Assigned",value: loading ? "—" : assignedCount,         icon: UserCog,      accent: "text-violet-600", bg: "bg-violet-50", trend: `${unassignedCount} unassigned` },
+    { label: "Total Sections",   value: loading ? "—" : sectionOptions.length - 1, icon: Users,   accent: "text-amber-600",  bg: "bg-amber-50",  trend: "Across all grades"         },
   ];
 
   return (
@@ -485,9 +406,7 @@ export default function ClassUI() {
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-xs font-bold">
                 AP
               </div>
-              <span className="hidden sm:block text-sm font-medium text-gray-700">
-                Admin
-              </span>
+              <span className="hidden sm:block text-sm font-medium text-gray-700">Admin</span>
               <ChevronDown size={14} className="text-gray-400" />
             </button>
           </div>
@@ -497,22 +416,15 @@ export default function ClassUI() {
           {/* Heading */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-                Classes
-              </h1>
-              <p className="text-sm text-gray-500 mt-0.5">
-                Manage all class records and teacher assignments
-              </p>
+              <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Classes</h1>
+              <p className="text-sm text-gray-500 mt-0.5">Manage all class records and teacher assignments</p>
             </div>
             <div className="flex items-center gap-3">
               <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:bg-gray-50 transition-all shadow-sm">
                 <Download size={15} /> Export
               </button>
               <button
-                onClick={() => {
-                  setEditData(null);
-                  setModal(true);
-                }}
+                onClick={() => { setEditData(null); setModal(true); }}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md shadow-blue-200 transition-all"
               >
                 <Plus size={15} /> Add Class
@@ -522,21 +434,15 @@ export default function ClassUI() {
 
           {/* Summary cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {SUMMARY.map((s) => (
-              <SummaryCard key={s.label} {...s} />
-            ))}
+            {SUMMARY.map((s) => <SummaryCard key={s.label} {...s} />)}
           </div>
 
-          {/* ── Class List + Filters ─────────────────────────────────────── */}
+          {/* Class List + Filters */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            {/* Filter bar — sits above the table, inside the same card */}
+            {/* Filter bar */}
             <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-              {/* Search */}
               <div className="relative flex-1 min-w-0">
-                <Search
-                  size={15}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                />
+                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 <input
                   type="text"
                   placeholder="Search by ID, grade, section, teacher…"
@@ -546,43 +452,29 @@ export default function ClassUI() {
                 />
               </div>
 
-              {/* Grade filter */}
               <div className="relative">
                 <select
                   value={filterGrade}
                   onChange={(e) => setFilterGrade(e.target.value)}
                   className="appearance-none pl-3.5 pr-8 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-300 hover:border-gray-300 transition-all"
                 >
-                  {gradeOptions.map((g) => (
-                    <option key={g}>{g}</option>
-                  ))}
+                  {gradeOptions.map((g) => <option key={g}>{g}</option>)}
                 </select>
-                <ChevronDown
-                  size={14}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                />
+                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               </div>
 
-              {/* Section filter */}
               <div className="relative">
                 <select
                   value={filterSection}
                   onChange={(e) => setFilterSection(e.target.value)}
                   className="appearance-none pl-3.5 pr-8 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-300 hover:border-gray-300 transition-all"
                 >
-                  {sectionOptions.map((s) => (
-                    <option key={s}>{s}</option>
-                  ))}
+                  {sectionOptions.map((s) => <option key={s}>{s}</option>)}
                 </select>
-                <ChevronDown
-                  size={14}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                />
+                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               </div>
 
-              <p className="text-sm text-gray-400 self-center whitespace-nowrap">
-                {filtered.length} found
-              </p>
+              <p className="text-sm text-gray-400 self-center whitespace-nowrap">{filtered.length} found</p>
             </div>
 
             {/* Loading */}
@@ -598,12 +490,7 @@ export default function ClassUI() {
               <div className="py-12 text-center">
                 <AlertCircle size={32} className="mx-auto mb-3 text-red-400" />
                 <p className="font-medium text-red-500">{error}</p>
-                <button
-                  onClick={fetchAll}
-                  className="mt-3 text-sm text-blue-600 hover:underline"
-                >
-                  Retry
-                </button>
+                <button onClick={fetchAll} className="mt-3 text-sm text-blue-600 hover:underline">Retry</button>
               </div>
             )}
 
@@ -613,105 +500,54 @@ export default function ClassUI() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50/70">
-                      {[
-                        "Class ID",
-                        "Grade",
-                        "Section",
-                        "Class Teacher",
-                        "Actions",
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          className="px-6 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400"
-                        >
-                          {h}
-                        </th>
+                      {["Class ID", "Grade", "Section", "Class Teacher", "Actions"].map((h) => (
+                        <th key={h} className="px-6 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-400">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {filtered.length === 0 ? (
                       <tr>
-                        <td
-                          colSpan={5}
-                          className="py-16 text-center text-gray-400 text-sm"
-                        >
-                          No classes found
-                        </td>
+                        <td colSpan={5} className="py-16 text-center text-gray-400 text-sm">No classes found</td>
                       </tr>
                     ) : (
                       filtered.map((cls) => {
                         const av = AVATAR_COLORS[colorForId(cls.dbId)];
                         return (
-                          <tr
-                            key={cls.dbId}
-                            className="hover:bg-blue-50/30 transition-colors group"
-                          >
-                            {/* Class ID */}
+                          <tr key={cls.dbId} className="hover:bg-blue-50/30 transition-colors group">
                             <td className="px-6 py-4">
-                              <span className="text-xs font-mono text-gray-600 bg-gray-100 px-2.5 py-1 rounded-lg">
-                                {cls.id}
-                              </span>
+                              <span className="text-xs font-mono text-gray-600 bg-gray-100 px-2.5 py-1 rounded-lg">{cls.id}</span>
                             </td>
-
-                            {/* Grade */}
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-3">
-                                <div
-                                  className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 ${av.bg} ${av.text}`}
-                                >
-                                  {cls.grade?.toString().replace(/\D/g, "") ||
-                                    "?"}
+                                <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 ${av.bg} ${av.text}`}>
+                                  {cls.grade?.toString().replace(/\D/g, "") || "?"}
                                 </div>
-                                <span className="text-sm font-semibold text-gray-800">
-                                  {cls.grade}
-                                </span>
+                                <span className="text-sm font-semibold text-gray-800">{cls.grade}</span>
                               </div>
                             </td>
-
-                            {/* Section */}
-                            {/* Section */}
                             <td className="px-6 py-4">
                               <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-sm">
                                 {cls.section}
                               </span>
                             </td>
-
-                            {/* Class Teacher */}
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-2.5">
                                 <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                                  <UserCog
-                                    size={13}
-                                    className="text-blue-600"
-                                  />
+                                  <UserCog size={13} className="text-blue-600" />
                                 </div>
-                                <span
-                                  className={`text-sm font-medium ${
-                                    cls.classTeacher === "Unassigned"
-                                      ? "text-gray-400 italic"
-                                      : "text-gray-800"
-                                  }`}
-                                >
+                                <span className={`text-sm font-medium ${cls.classTeacher === "Unassigned" ? "text-gray-400 italic" : "text-gray-800"}`}>
                                   {cls.classTeacher}
                                 </span>
                               </div>
                             </td>
-
-                            {/* Actions */}
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                                  title="View"
-                                >
+                                <button className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="View">
                                   <Eye size={14} />
                                 </button>
                                 <button
-                                  onClick={() => {
-                                    setEditData(cls);
-                                    setModal(true);
-                                  }}
+                                  onClick={() => { setEditData(cls); setModal(true); }}
                                   className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
                                   title="Edit"
                                 >
@@ -739,15 +575,8 @@ export default function ClassUI() {
             {!loading && !error && filtered.length > 0 && (
               <div className="px-6 py-3.5 border-t border-gray-100">
                 <p className="text-xs text-gray-400">
-                  Showing{" "}
-                  <span className="font-semibold text-gray-600">
-                    {filtered.length}
-                  </span>{" "}
-                  of{" "}
-                  <span className="font-semibold text-gray-600">
-                    {classes.length}
-                  </span>{" "}
-                  classes
+                  Showing <span className="font-semibold text-gray-600">{filtered.length}</span>{" "}
+                  of <span className="font-semibold text-gray-600">{classes.length}</span> classes
                 </p>
               </div>
             )}
@@ -758,10 +587,7 @@ export default function ClassUI() {
       {/* Modals */}
       <ClassModal
         open={modal}
-        onClose={() => {
-          setModal(false);
-          setEditData(null);
-        }}
+        onClose={() => { setModal(false); setEditData(null); }}
         onSaved={fetchAll}
         editData={editData}
         teachers={meta.teachers}

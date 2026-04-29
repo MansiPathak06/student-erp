@@ -133,29 +133,57 @@ const getAssignments = async (req, res) => {
 // ─── GET /api/student/timetable ───────────────────────────────────────────────
 const getTimetable = async (req, res) => {
   try {
+    // class_id directly use karo — name matching se bachao
     const student = await pool.query(
-      "SELECT class, section FROM students WHERE user_id=$1",
+      "SELECT class_id, class, section FROM students WHERE user_id=$1",
       [req.user.id]
     );
     if (student.rows.length === 0)
       return res.status(404).json({ message: "Student not found" });
 
-    const { class: cls, section } = student.rows[0];
-    const result = await pool.query(
-      `SELECT tt.*, u.name as teacher_name, c.class_name, c.section
-       FROM timetable tt
-       JOIN classes c ON tt.class_id = c.id
-       JOIN teachers t ON tt.teacher_id = t.id
-       JOIN users u ON t.user_id = u.id
-       WHERE (c.class_name = $1 AND c.section = $2)
-          OR (c.class_name = $3)
-       ORDER BY CASE tt.day_of_week
-         WHEN 'Monday' THEN 1 WHEN 'Tuesday' THEN 2
-         WHEN 'Wednesday' THEN 3 WHEN 'Thursday' THEN 4
-         WHEN 'Friday' THEN 5 WHEN 'Saturday' THEN 6
-       END, tt.start_time`,
-      [cls, section, `${cls}-${section}`]
-    );
+    const { class_id, class: cls, section } = student.rows[0];
+    
+    console.log("DEBUG timetable:", { class_id, cls, section }); // debug ke liye
+
+    if (!class_id) {
+      return res.json([]); // class_id nahi hai toh empty
+    }
+
+  const result = await pool.query(
+  `SELECT 
+     tt.id,
+     tt.class_id,
+     tt.teacher_id,
+     tt.subject,
+     tt.day_of_week,
+     tt.start_time,
+     tt.end_time,
+     CASE tt.start_time
+       WHEN '08:00:00' THEN 1
+       WHEN '08:50:00' THEN 2
+       WHEN '09:40:00' THEN 3
+       WHEN '10:45:00' THEN 4
+       WHEN '11:35:00' THEN 5
+       WHEN '12:25:00' THEN 6
+       WHEN '13:15:00' THEN 7
+     END AS period_number,
+     u.name AS teacher_name
+   FROM timetable tt
+   JOIN teachers t ON tt.teacher_id = t.id
+   JOIN users u ON t.user_id = u.id
+   WHERE tt.class_id = $1
+   ORDER BY 
+     CASE tt.day_of_week
+       WHEN 'Monday'    THEN 1
+       WHEN 'Tuesday'   THEN 2
+       WHEN 'Wednesday' THEN 3
+       WHEN 'Thursday'  THEN 4
+       WHEN 'Friday'    THEN 5
+       WHEN 'Saturday'  THEN 6
+     END,
+     tt.start_time`,
+  [class_id]
+);
     res.json(result.rows);
   } catch (err) {
     console.error("getTimetable error:", err);

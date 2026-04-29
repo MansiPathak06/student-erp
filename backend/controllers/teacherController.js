@@ -440,7 +440,24 @@ const getProfile = async (req, res) => {
     );
     if (result.rows.length === 0)
       return res.status(404).json({ message: "Profile not found" });
-    res.json(result.rows[0]);
+
+    const row = result.rows[0];
+    
+
+    // ADD THIS — check what's actually in the DB and what URL is built
+    console.log("profile_picture raw:", row.profile_picture);
+    console.log("aadhar_image_url raw:", row.aadhar_image_url);
+    console.log("SERVER_URL:", SERVER_URL);
+
+    res.json({
+      ...row,
+      profile_picture: row.profile_picture
+        ? `${SERVER_URL}${row.profile_picture}`
+        : null,
+      aadhar_image_url: row.aadhar_image_url
+        ? `${SERVER_URL}${row.aadhar_image_url}`
+        : null,
+    });
   } catch (err) {
     console.error("getProfile:", err);
     res.status(500).json({ message: "Server error" });

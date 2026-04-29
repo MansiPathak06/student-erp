@@ -14,8 +14,10 @@ const getToken = () => {
   return m ? m[2] : null;
 };
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
 const apiFetch = (path) =>
-  fetch(`/api/teacher${path}`, {
+  fetch(`${API_BASE}/api/teacher${path}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   }).then((r) => {
     if (!r.ok) throw new Error(`${r.status}`);
@@ -69,7 +71,7 @@ function NoticesSection() {
     setLoading(true);
     setError("");
     try {
-      const res = await apiFetch("/notices");   // → GET /api/teacher/notices
+      const res = await apiFetch("/notices");
       setData(res || []);
     } catch {
       setError("Failed to load notices");
@@ -82,7 +84,6 @@ function NoticesSection() {
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      {/* Header */}
       <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-2">
         <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
           <Bell size={15} className="text-amber-600" />
@@ -95,7 +96,6 @@ function NoticesSection() {
         )}
       </div>
 
-      {/* Body */}
       <div className="p-4">
         {loading ? (
           <div className="space-y-2"><Skeleton h="h-14" /><Skeleton h="h-14" /></div>
@@ -112,10 +112,9 @@ function NoticesSection() {
         ) : (
           <div className="space-y-2">
             {data.map(n => {
-              const cat     = CATEGORY_STYLE[n.category] ?? CATEGORY_STYLE.General;
-              const isOpen  = expanded === n.id;
+              const cat      = CATEGORY_STYLE[n.category] ?? CATEGORY_STYLE.General;
+              const isOpen   = expanded === n.id;
               const isUrgent = n.priority === "Urgent";
-
               return (
                 <div
                   key={n.id}
@@ -129,7 +128,6 @@ function NoticesSection() {
                     onClick={() => setExpanded(isOpen ? null : n.id)}
                     className="w-full flex items-start gap-3 px-4 py-3.5 text-left"
                   >
-                    {/* Left icon */}
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5
                       ${isUrgent ? "bg-red-100" : n.is_pinned ? "bg-emerald-100" : "bg-gray-100"}`}>
                       {isUrgent
@@ -139,9 +137,7 @@ function NoticesSection() {
                         : <Bell size={15} className="text-gray-500" />
                       }
                     </div>
-
                     <div className="flex-1 min-w-0">
-                      {/* Badges */}
                       <div className="flex items-center gap-1.5 flex-wrap mb-1">
                         {n.is_pinned && (
                           <span className="text-[10px] bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded-full font-semibold">
@@ -158,7 +154,6 @@ function NoticesSection() {
                           </span>
                         )}
                       </div>
-
                       <p className="text-sm font-semibold text-gray-900 leading-tight">{n.title}</p>
                       <p className="text-xs text-gray-400 mt-0.5">
                         {n.author ?? "Admin"} ·{" "}
@@ -167,8 +162,6 @@ function NoticesSection() {
                         })}
                       </p>
                     </div>
-
-                    {/* Chevron */}
                     <svg
                       width="14" height="14" viewBox="0 0 24 24" fill="none"
                       stroke="currentColor" strokeWidth="2"
@@ -177,8 +170,6 @@ function NoticesSection() {
                       <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </button>
-
-                  {/* Expanded content */}
                   {isOpen && (
                     <div className="px-4 pb-4 pt-0 border-t border-gray-100">
                       <div className="mt-3 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap bg-gray-50 rounded-xl p-3 border border-gray-100">
@@ -258,6 +249,7 @@ export default function TeacherDashboardPage() {
               </h1>
               <p className="text-sm text-gray-400">{dateStr}</p>
             </div>
+          
             {profile && (
               <div className="flex items-center gap-3 bg-emerald-50 rounded-xl px-4 py-2.5 border border-emerald-100">
                 <div className="w-9 h-9 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
@@ -293,38 +285,73 @@ export default function TeacherDashboardPage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             {/* Profile card */}
-            <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="h-2 bg-gradient-to-r from-emerald-500 to-teal-600" />
-              <div className="p-5">
-                <div className="flex items-center gap-4 mb-4">
-                  {profile?.profile_picture ? (
-                    <img src={profile.profile_picture} alt={profile.name} className="w-16 h-16 rounded-2xl object-cover flex-shrink-0" />
-                  ) : (
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
-                      {getInitials(profile?.name || "")}
-                    </div>
-                  )}
-                  <div>
-                    <p className="font-bold text-gray-900 text-base leading-tight">{profile?.name || "—"}</p>
-                    <p className="text-xs text-emerald-600 font-medium mt-0.5">{profile?.teacher_type || "Teacher"}</p>
-                    {primaryClass && (
-                      <p className="text-xs text-gray-400 mt-0.5">Class {primaryClass.grade}-{primaryClass.section}</p>
-                    )}
-                  </div>
-                </div>
-                <div className="space-y-2.5">
-                  {[
-                    { icon: Mail,  val: profile?.email },
-                    { icon: Phone, val: profile?.phone },
-                  ].map(({ icon: I, val }, idx) => val ? (
-                    <div key={idx} className="flex items-center gap-2.5">
-                      <I size={14} className="text-emerald-400 flex-shrink-0" />
-                      <span className="text-sm text-gray-600 truncate">{val}</span>
-                    </div>
-                  ) : null)}
-                </div>
-              </div>
-            </div>
+           {/* Profile card */}
+<div className="lg:col-span-1 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+  <div className="h-2 bg-gradient-to-r from-emerald-500 to-teal-600" />
+  <div className="p-5">
+    <div className="flex items-center gap-4 mb-4">
+      {profile?.profile_picture ? (
+        <img
+          src={profile.profile_picture}
+          alt={profile.name}
+          className="w-16 h-16 rounded-2xl object-cover flex-shrink-0"
+          onError={(e) => { e.target.style.display = "none"; }}
+        />
+      ) : (
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
+          {getInitials(profile?.name || "")}
+        </div>
+      )}
+      <div>
+        <p className="font-bold text-gray-900 text-base leading-tight">{profile?.name || "—"}</p>
+        <p className="text-xs text-emerald-600 font-medium mt-0.5">{profile?.teacher_type || "Teacher"}</p>
+        {primaryClass && (
+          <p className="text-xs text-gray-400 mt-0.5">Class {primaryClass.grade}-{primaryClass.section}</p>
+        )}
+      </div>
+    </div>
+
+    {/* Contact rows */}
+    <div className="space-y-2.5">
+      {profile?.email && (
+        <div className="flex items-center gap-2.5">
+          <Mail size={14} className="text-emerald-400 flex-shrink-0" />
+          <span className="text-sm text-gray-600 truncate">{profile.email}</span>
+        </div>
+      )}
+      {profile?.phone && (
+        <div className="flex items-center gap-2.5">
+          <Phone size={14} className="text-emerald-400 flex-shrink-0" />
+          <span className="text-sm text-gray-600">{profile.phone}</span>
+        </div>
+      )}
+    </div>
+
+    {/* Aadhaar section */}
+    {/* Aadhaar Details */}
+{(profile?.aadhar_number || profile?.aadhar_image_url) && (
+  <div className="mt-4 pt-4 border-t border-gray-50">
+    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
+      Aadhaar Details
+    </p>
+    {profile.aadhar_number && (
+      <p className="text-sm font-mono text-gray-700 tracking-widest mb-2">
+        {profile.aadhar_number.replace(/(\d{4})(\d{4})(\d{4})/, "$1 $2 $3")}
+      </p>
+    )}
+    {profile.aadhar_image_url && (
+      <a href={profile.aadhar_image_url} target="_blank" rel="noreferrer">
+        <img
+          src={profile.aadhar_image_url}
+          alt="Aadhaar Card"
+          className="h-20 w-full object-cover rounded-xl border border-gray-100 hover:opacity-80 transition-opacity cursor-pointer"
+        />
+      </a>
+    )}
+  </div>
+)}
+  </div>
+</div>
 
             {/* Right column */}
             <div className="lg:col-span-2 space-y-5">

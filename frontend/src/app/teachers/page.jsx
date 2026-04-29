@@ -29,6 +29,8 @@ import {
   Check,
 } from "lucide-react";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 const STATUSES = ["All Status", "Active", "On Leave", "Inactive"];
 const EXPERIENCE_RANGES = [
@@ -1572,8 +1574,8 @@ const [viewingTeacher, setViewingTeacher] = useState(null);
     const token = getToken();
     const headers = { Authorization: `Bearer ${token}` };
     Promise.all([
-      fetch("/api/admin/teachers", { headers }).then((r) => r.json()),
-      fetch("/api/admin/teachers/meta", { headers }).then((r) => r.json()),
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/admin/teachers`, { headers }).then((r) => r.json()),
+      fetch(`${API_BASE}/api/admin/teachers/meta`, { headers }).then((r) => r.json()),
     ])
       .then(([teacherData, metaData]) => {
         if (Array.isArray(teacherData)) setTeachers(teacherData);
@@ -1653,7 +1655,7 @@ const handleSaved = async () => {
   const token = getToken();
   const headers = { Authorization: `Bearer ${token}` };
   try {
-    const teacherData = await fetch("/api/admin/teachers", { headers }).then(r => r.json());
+    const teacherData = await fetch(`${API_BASE}/api/admin/teachers`, { headers }).then(r => r.json());
     if (Array.isArray(teacherData)) setTeachers(teacherData);
   } catch {
     // silent — list will refresh on next page load

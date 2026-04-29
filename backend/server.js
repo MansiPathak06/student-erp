@@ -1,7 +1,9 @@
+const cookieParser = require("cookie-parser");
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
 require("dotenv").config();
+
 
 const authRoutes           = require("./routes/authRoutes");
 const adminRoutes          = require("./routes/adminRoutes");
@@ -17,9 +19,9 @@ const attendanceRoutes = require("./routes/attendanceRoutes");
 
 const app = express();
 
-app.use(cors({ origin: "http://localhost:3000", credentials: true }));
+app.use(cors({ origin: process.env.CLIENT_URL || "http://localhost:3000", credentials: true }));
 app.use(express.json());
-
+app.use(cookieParser()); 
 app.get("/", (req, res) => res.json({ message: "EduERP API running ✅" }));
 
 app.use("/api/admin/notices",   adminNoticesRoutes);

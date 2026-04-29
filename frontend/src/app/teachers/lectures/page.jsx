@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import TeacherSidebar from "@/components/TeacherSidebar";
 import { Clock, BookOpen } from "lucide-react";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
 const getToken = () => {
   if (typeof window === "undefined") return null;
   const m = document.cookie.match(/(^| )token=([^;]+)/);
@@ -11,7 +13,7 @@ const getToken = () => {
 };
 
 const apiFetch = (path) =>
-  fetch(`/api/teacher${path}`, {
+fetch(`${API_BASE}/api/teacher${path}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   }).then((r) => {
     if (!r.ok) throw new Error(`${r.status}`);
